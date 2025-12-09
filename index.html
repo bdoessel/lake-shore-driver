@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lake Shore Driver - Pure Three.js (Final)</title>
+    <title>Lake Shore Driver - Simple Working Version</title>
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
         
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -28,9 +28,7 @@
             position: fixed;
             bottom: 30px; left: 50%;
             transform: translateX(-50%);
-            display: flex; gap: 30px;
             z-index: 100;
-            pointer-events: none;
         }
         
         .hud-item {
@@ -39,18 +37,15 @@
             border-radius: 10px;
             padding: 15px 30px;
             text-align: center;
-            backdrop-filter: blur(5px);
-            min-width: 120px;
         }
         
         .hud-value {
-            color: #fff; font-size: 42px; font-weight: bold; font-family: 'Orbitron', sans-serif;
-            text-shadow: 0 0 10px rgba(0,255,136,0.5);
+            color: #00ff88; font-size: 42px; font-weight: bold; 
+            font-family: 'Orbitron', sans-serif;
         }
         .hud-label {
             color: #888; font-size: 12px; letter-spacing: 2px; margin-top: 5px;
         }
-        #speed-value { color: #00ff88; }
 
         #loading-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -58,7 +53,6 @@
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
             font-family: 'Courier New', monospace;
-            transition: opacity 1s;
         }
         
         .loader {
@@ -67,14 +61,20 @@
             animation: spin 1s linear infinite;
             margin-bottom: 20px;
         }
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #controls-hint {
+            position: fixed; top: 20px; right: 20px;
+            color: rgba(255,255,255,0.6);
+            font-size: 14px; text-align: right;
+        }
     </style>
 
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "3d-tiles-renderer": "https://unpkg.com/3d-tiles-renderer@0.3.26/src/index.js"
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
             }
         }
     </script>
@@ -87,6 +87,11 @@
         <div class="loader"></div>
         <div id="loading-text">LOADING CHICAGO...</div>
     </div>
+    
+    <div id="controls-hint">
+        WASD or Arrow Keys to Drive<br>
+        SPACE to Brake
+    </div>
 
     <div id="hud">
         <div class="hud-item">
@@ -97,29 +102,31 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-        import { TilesRenderer } from '3d-tiles-renderer';
 
-        const GOOGLE_API_KEY = "AIzaSyBw-8RJiszHoHiJEfpUipnLitUzi3Pn88g";
+        // --- CONFIG ---
         const START_LAT = 41.9840;
         const START_LON = -87.6530;
 
-        let scene, camera, renderer, tilesRenderer;
-        let car, carBody;
-        let raycaster, downVector;
+        let scene, camera, renderer, car;
         let lastTime = performance.now();
         
         const carState = {
-            speed: 0, maxSpeed: 300, rotation: Math.PI,
-            velocity: new THREE.Vector3(), onGround: false,
-            groundHeight: 0, airborne: false, verticalVel: 0
+            speed: 0,
+            maxSpeed: 300,
+            rotation: Math.PI
         };
 
         const keys = { forward: false, backward: false, left: false, right: false, brake: false };
 
+        // GPS to Local helper
+        function gpsToLocal(lat, lon) {
+            const z = (START_LAT - lat) * 111132;
+            const x = (lon - START_LON) * 82955;
+            return new THREE.Vector3(x, 0, z);
+        }
+
         function init() {
-            // 1. Setup Scene
+            // Scene
             const container = document.getElementById('game-container');
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x050510);
@@ -127,167 +134,104 @@
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 30000);
             
-            renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            renderer.toneMappingExposure = 1.3;
             container.appendChild(renderer.domElement);
 
-            // 2. Lights
+            // Lights
             const ambient = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambient);
             const sun = new THREE.DirectionalLight(0xffffff, 1.5);
             sun.position.set(100, 1000, 500);
             scene.add(sun);
 
-            // 3. Google 3D Tiles (Direct Key Method)
-            tilesRenderer = new TilesRenderer(
-                `https://tile.googleapis.com/v1/3dtiles/root.json?key=${GOOGLE_API_KEY}`
-            );
-            
-            tilesRenderer.setCamera(camera);
-            tilesRenderer.setResolutionFromRenderer(camera, renderer);
-            tilesRenderer.fetchOptions.mode = 'cors'; 
-            tilesRenderer.lruCache.minSize = 1000;
-            tilesRenderer.lruCache.maxSize = 2500;
-            tilesRenderer.errorTarget = 20;
+            // Simple ground plane (no 3D tiles)
+            const groundGeo = new THREE.PlaneGeometry(50000, 50000);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -0.5;
+            scene.add(ground);
 
-            scene.add(tilesRenderer.group);
-
-            // --- ALIGN WORLD TO START LOCATION ---
-            // This rotates the Earth so Chicago is at (0,0,0) and flat
-            const rotX = (90 - START_LAT) * (Math.PI / 180);
-            const rotY = (90 + START_LON) * (Math.PI / 180);
-            
-            tilesRenderer.group.rotation.set(0, rotY, 0); 
-            tilesRenderer.group.rotateX(-rotX);           
-            tilesRenderer.group.position.y = -6378137; // Earth Radius offset
-            
-            // 4. Game Objects
-            raycaster = new THREE.Raycaster();
-            downVector = new THREE.Vector3(0, -1, 0);
+            // Grid for reference
+            const gridHelper = new THREE.GridHelper(50000, 500, 0x00ff88, 0x444444);
+            scene.add(gridHelper);
 
             createCar();
-            createRamps();
+            createTrack();
             setupControls();
 
             window.addEventListener('resize', onResize);
             
-            // Start Loop
-            animate();
-            
-            // Hide Loader
+            // Hide loading
             setTimeout(() => {
                 document.getElementById('loading-screen').style.opacity = 0;
                 setTimeout(() => document.getElementById('loading-screen').remove(), 1000);
-            }, 3000);
+            }, 500);
+
+            animate();
         }
 
-        // --- GPS HELPER ---
-        function gpsToLocal(lat, lon) {
-            // Converts GPS to Meters relative to our start point
-            const z = (START_LAT - lat) * 111132; 
-            const x = (lon - START_LON) * 82955;  
-            return new THREE.Vector3(x, 0, z);
-        }
-
-        function createRamps() {
-            window.physicsObjects = [];
-            
-            const rampLocations = [
-                { lat: 41.9840, lon: -87.6530, color: 0xff6600, w: 25, h: 4, l: 30, boost: 25 }, 
-                { lat: 41.9050, lon: -87.6250, color: 0xff0000, w: 40, h: 12, l: 60, boost: 50 }
-            ];
-
-            const geo = new THREE.BoxGeometry(1, 1, 1);
-            
-            rampLocations.forEach(data => {
-                const pos = gpsToLocal(data.lat, data.lon);
-                const mat = new THREE.MeshStandardMaterial({ color: data.color });
-                const mesh = new THREE.Mesh(geo, mat);
-                
-                mesh.scale.set(data.w, data.h, data.l);
-                mesh.position.set(pos.x, data.h / 2, pos.z);
-                mesh.rotation.x = -0.2; // Incline
-                
-                scene.add(mesh);
-                
-                // Add to physics
-                window.physicsObjects.push({
-                    box: new THREE.Box3().setFromObject(mesh),
-                    type: 'ramp',
-                    boost: data.boost
-                });
+        function setupControls() {
+            window.addEventListener('keydown', (e) => {
+                if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
+                if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
+                if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
+                if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
+                if(e.code === 'Space') { keys.brake = true; e.preventDefault(); }
+            });
+            window.addEventListener('keyup', (e) => {
+                if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = false;
+                if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = false;
+                if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
+                if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
+                if(e.code === 'Space') keys.brake = false;
             });
         }
 
         function createCar() {
             car = new THREE.Group();
-            const body = new THREE.Mesh(
-                new THREE.BoxGeometry(2.2, 0.8, 4.8),
-                new THREE.MeshStandardMaterial({ color: 0xd40000, roughness: 0.3 })
-            );
-            body.position.y = 0.4;
-            car.add(body);
             
-            // Lights
-            const light = new THREE.SpotLight(0xffffee, 50, 500, 0.5, 0.5);
-            light.position.set(0, 1, -1);
-            light.target.position.set(0, 0, -40);
-            car.add(light);
-            car.add(light.target);
+            // Simple red box car
+            const bodyGeo = new THREE.BoxGeometry(2, 0.5, 4.5);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2 });
+            const mesh = new THREE.Mesh(bodyGeo, bodyMat);
+            mesh.position.y = 0.5;
+            car.add(mesh);
+            
+            // Headlights
+            const lightL = new THREE.SpotLight(0xffffee, 50, 400, 0.6, 0.5);
+            lightL.position.set(-0.8, 1.0, -1.0);
+            lightL.target.position.set(-0.8, 0, -50);
+            car.add(lightL);
+            car.add(lightL.target);
+
+            const lightR = new THREE.SpotLight(0xffffee, 50, 400, 0.6, 0.5);
+            lightR.position.set(0.8, 1.0, -1.0);
+            lightR.target.position.set(0.8, 0, -50);
+            car.add(lightR);
+            car.add(lightR.target);
 
             scene.add(car);
-            car.position.set(0, 50, 0); // Start high
-            
-            // Attempt to load GLB (Optional enhancement)
-            const loader = new GLTFLoader();
-            const draco = new DRACOLoader();
-            draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-            loader.setDRACOLoader(draco);
-            loader.load('data:model/gltf-binary;base64,Z2xURgIAAADkHAQAiE4AAEpTT057ImFjY2Vzc29ycyI6W3siYnVmZmVyVmlldyI6MiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE1NjMsIm1heCI6WzguOTk1NTkyMTE3MzA5NTcsMS4wLDEuNTg1MTc2OTQ0NzMyNjY2XSwibWluIjpbLTEwLjI2MzUzNTQ5OTU3Mjc1NCwtMS4wNTc2MjIzMTM0OTk0NTA3LC0xLjU4NTE3Njk0NDczMjY2Nl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0IjoxODc1NiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE1NjMsIm1heCI6WzEuMCwxLjAsMS4wXSwibWluIjpbLTAuOTgwNDI4NzU1MjgzMzU1NywtMS4wLC0xLjBdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE1NjMsIm1heCI6WzAuODc1MDAwMDU5NjA0NjQ0OCwxLjAwMDAwMDIzODQxODU3OV0sIm1pbiI6WzAuMCwwLjBdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MCwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI0NDIsInR5cGUiOiJTQ0FMQVIifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjM3NTEyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6ODE3LCJtYXgiOls5LjE4ODA1OTgwNjgyMzczLC0wLjEzMDEyMjcyMTE5NTIyMDk1LDEuNTg1MTc2OTQ0NzMyNjY2XSwibWluIjpbLTEwLjI2MzUzNTQ5OTU3Mjc1NCwtMS4wNTg3NTkyMTI0OTM4OTY1LC0xLjU4NTE3Njk0NDczMjY2Nl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo0NzMxNiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjgxNywibWF4IjpbMS4wLDEuMCwxLjBdLCJtaW4iOlstMS4wLC0xLjAsLTEuMF0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjoxMjUwNCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjgxNywibWF4IjpbMC44NzUsMS4wMDAwMDAyMzg0MTg1NzldLCJtaW4iOlswLjAsMC4wXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjk3NjgsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50IjoxNTU0LCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo1NzEyMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE2LCJtYXgiOls3LjY2MjM2OTcyODA4ODM3OSwwLjMyMjEzMjk3NDg2MzA1MjM3LDAuODYxNTI3OTE5NzY5Mjg3MV0sIm1pbiI6WzYuMjQ3OTQ5MTIzMzgyNTY4LDAuMDAxMjkyNzUwMjM5MzcyMjUzNCwtMC44NjE1Mjc5MTk3NjkyODcxXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjU3MzEyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTYsIm1heCI6WzAuMTk3OTk0MDUzMzYzODAwMDUsMC45ODAyMDMyNzA5MTIxNzA0LDAuMTAxMjI2OTg1NDU0NTU5MzNdLCJtaW4iOlswLjE5MjIwOTYzMTIwNDYwNTEsMC45NzYxMTkxMDEwNDc1MTU5LC0wLjEwMTIyNzA3NDg2MTUyNjQ5XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjE5MDQwLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTYsIm1heCI6WzAuNjI1LDAuNjk5MDIyNzEwMzIzMzMzN10sIm1pbiI6WzAuNjI1LDAuNjI1XSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjE1OTg0LCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MjQsInR5cGUiOiJTQ0FMQVIifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjU3NTA0LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTE4LCJtYXgiOls1Ljc3OTUzMDUyNTIwNzUxOTUsMC45NTk5NzIzMjE5ODcxNTIxLDEuMzUxMTc1NTQ2NjQ2MTE4Ml0sIm1pbiI6Wy0zLjYxMjk1Mjk0NzYxNjU3NywwLjE3OTk0NDQ1NTYyMzYyNjcsLTEuMzUxMTc1NTQ2NjQ2MTE4Ml0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo1ODkyMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjExOCwibWF4IjpbMC4xOTY0ODkwMzYwODMyMjE0NCwwLjk5MTYyNTkwNTAzNjkyNjMsMC44OTMyMjExMzk5MDc4MzY5XSwibWluIjpbLTAuMjU0OTYxNzI5MDQ5NjgyNiwwLjQ0OTYwNjgzNTg0MjEzMjU3LC0wLjg5MzIyMTAyMDY5ODU0NzRdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiYnl0ZU9mZnNldCI6MTkxNjgsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxMTgsIm1heCI6WzAuODc1MDAwMDU5NjA0NjQ0OCwxLjBdLCJtaW4iOlswLjUzMTA1MDA4NjAyMTQyMzMsMC42MjQ5OTg4Njc1MTE3NDkzXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjE2MDgwLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MTgwLCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo2MDMzNiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjQ4LCJtYXgiOls4LjU5NTc0NTA4NjY2OTkyMiwtMC4yOTgwNTQ5MzM1NDc5NzM2MywxLjQ2MjgzNTE5MjY4MDM1ODldLCJtaW4iOlstOS44NzUyOTg1MDAwNjEwMzUsLTAuNTYxMjAyNjQ1MzAxODE4OCwtMS40NjI4MzUxOTI2ODAzNTg5XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjYwOTEyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NDgsIm1heCI6WzAuOTk2MDA5MjMwNjEzNzA4NSwwLjEyODEzODE2OTY0NjI2MzEyLDAuOTk5NjkzOTg5NzUzNzIzMV0sIm1pbiI6Wy0wLjM2OTY0MzAzMjU1MDgxMTc3LC0wLjAzMTQ0NDQ2Mzg3ODg3MDAxLC0wLjk5OTY5MzkzMDE0OTA3ODRdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiYnl0ZU9mZnNldCI6MjAxMTIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo0OCwibWF4IjpbMC42MjUsMS4wXSwibWluIjpbMC40OTk5OTk5MTA1OTMwMzI4NCwwLjY5NjA5NzEzNTU0MzgyMzJdLCJ0eXBlIjoiVkVDMiJ9LHsiYnVmZmVyVmlldyI6MCwiYnl0ZU9mZnNldCI6MTY4MDAsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50Ijo3MiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NjE0ODgsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxNCwibWF4IjpbOC41OTU3NDUwODY2Njk5MjIsLTAuMjk4MDU0OTMzNTU0OTczNjMsMC43NTc0Nzc5OTg3MzM1MjA1XSwibWluIjpbOC41NzA3NTUwMDQ4ODI4MTMsLTAuNDg4MTQyOTY3MjI0MTIxMSwtMC43NTc0Nzc5OTg3MzM1MjA1XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjYxNjU2LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTQsIm1heCI6WzEuMCwwLjA2NzYzNTc2NzE2MTg0NjE2LDAuMDM0MDk2MjY3MDc0MzQ2NTRdLCJtaW4iOlswLjk5NzEyNzM1NDE0NTA1LDAuMCwtMC4wMzQwOTYyNjMzNDkwNTYyNDRdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiYnl0ZU9mZnNldCI6MjA0OTYsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxNCwibWF4IjpbMC42MjUsMC43MDY1MDI3OTUyMTk0MjE0XSwibWluIjpbMC41LDAuNjI1XSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjE3MDg4LCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MjQsInR5cGUiOiJTQ0FMQVIifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjYxODI0LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTI4LCJtYXgiOlstOC40OTUzMTg0MTI3ODA3NjIsMC4wOTUxNzY4ODMwNDE4NTg2NywxLjMwMjM3MDU0ODI0ODI5MV0sIm1pbiI6Wy04Ljk1NjM5OTkxNzYwMjUzOSwtMC4xOTkyOTUzNzE3NzA4NTg3NiwtMS4zMDIzNzA1NDgyNDgyOTFdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NjMzNjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxMjgsIm1heCI6Wy0wLjM2ODYxMjU1NzY0OTYxMjQsMC45MDc5MjE0MzM0NDg3OTE1LDAuMzczNjYzMDk3NjIwMDEwNF0sIm1pbiI6Wy0wLjY4NjU4MzA0MjE0NDc3NTQsMC42MzIyNDc0NDc5Njc1MjkzLC0wLjM3MzY2MzA5NzYyMDAxMDRdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiYnl0ZU9mZnNldCI6MjA2MDgsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxMjgsIm1heCI6WzAuODc1MDAwMDU5NjA0NjQ0OCwwLjc1XSwibWluIjpbMC44NzUsMC43MTY2MjQ2MTc1NzY1OTkxXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjE3MTg0LCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MTkyLCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo2NDg5NiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE4MCwibWF4IjpbMS4wLC01LjMyMTEwNzM4NzU0MjcyNSwxLjAwMDAwMDIzODQxODU3OV0sIm1pbiI6Wy0xLjAsLTUuODU4MjM4Njk3MDUyMDAyLC0wLjk5OTk5OTc2MTU4MTQyMDldLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NjcwNTYsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxODAsIm1heCI6WzAuOTY1OTI1OTMxOTMwNTQyLDAuODg5MzkyOTcxOTkyNDkyNywwLjk2NTkyNTkzMTkzMDU0Ml0sIm1pbiI6Wy0wLjk2NTkyNTg3MjMyNTg5NzIsLTEuMCwtMC45NjU5MjU4MTI3MjEyNTI0XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjIxNjMyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTgwLCJtYXgiOlswLjAsMC4wXSwibWluIjpbMC4wLDAuMF0sInR5cGUiOiJWRUMyIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoxNzk1MiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI4MiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NjkyMTYsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxODIsIm1heCI6WzAuODQ2NTk0NjMxNjcxOTA1NSwtNS40MDA0MTMwMzYzNDY0MzU1LDAuODQ2NTk0ODEwNDg1ODM5OF0sIm1pbiI6Wy0wLjg0NjU5NDUxMjQ2MjYxNiwtNS43OTgyMjAxNTc2MjMyOTEsLTAuODQ2NTk0MzMzNjQ4NjgxNl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo3MTQwMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE4MiwibWF4IjpbMC45NjU5MjU3NTMxMTY2MDc3LDEuMCwwLjk2NTkyNTkzMTkzMDU0Ml0sIm1pbiI6Wy0xLjAsLTMuNTI2MjM1MTYxNjQzODUzNmUtMDcsLTAuOTY1OTI1OTMxOTMwNTQyXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjIzMDcyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTgyLCJtYXgiOlswLjAsMC4wXSwibWluIjpbMC4wLDAuMF0sInR5cGUiOiJWRUMyIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoxOTA4MCwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI4OCwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NzM1ODQsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo2MCwibWF4IjpbMC4xOTM3MzY3NjE4MDgzOTUzOSwtNS40MDg5NzE3ODY0OTkwMjMsMC4xOTM3MzY4NjYxMTY1MjM3NF0sIm1pbiI6Wy0wLjE5MzczNjY3MjQwMTQyODIyLC01Ljg0OTU4NzkxNzMyNzg4MSwtMC4xOTM3MzY0MzM5ODI4NDkxMl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo3NDMwNCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjYwLCJtYXgiOlswLjk2NTkyNTg3MjMyNTg5NzIsMS4wLDAuOTY1OTI1OTkxNTM1MTg2OF0sIm1pbiI6Wy0wLjk2NTkyNTk5MTUzNTE4NjgsLTcuMTAwNzEyMTk2MDA2NDk4ZS0wOCwtMC45NjU5MjYxNzAzNDkxMjExXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjI0NTI4LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NjAsIm1heCI6WzAuMCwwLjBdLCJtaW4iOlswLjAsMC4wXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjIwMjMyLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MTAyLCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo3NTAyNCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjM2MCwibWF4IjpbMS4wLDIuNzQwMDEwNTI5NTc4Mjg1ZS0wOCwxLjAwMDAwMDM1NzYyNzg2ODddLCJtaW4iOlstMS4wMDAwMDAyMzg0MTg1NzksLTUuODU4MjM4Njk3MDUyMDAyLC0xLjBdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6NzkzNDQsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjozNjAsIm1heCI6WzAuOTY1OTI1OTMxOTMwNTQyLDEuMCwwLjk2NTkyNTkzMTkzMDU0Ml0sIm1pbiI6Wy0wLjk2NTkyNTg3MjMyNTg5NzIsLTEuMCwtMC45NjU5MjU5MzE5MzA1NDJdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MSwiYnl0ZU9mZnNldCI6MjUwMDgsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjozNjAsIm1heCI6WzAuMCwwLjBdLCJtaW4iOlswLjAsMC4wXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjIwNjQwLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6NTY0LCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo4MzY2NCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjM1NCwibWF4IjpbMC44NDY1OTQ2MzE2NzE5MDU1LC0wLjA2MDAxODMxNTkxMTI5MzAzLDAuODQ2NTk0OTI5Njk1MTI5NF0sIm1pbiI6Wy0wLjg0NjU5NDc1MDg4MTE5NTEsLTUuNzk4MjIwMTU3NjIzMjkxLC0wLjg0NjU5NDU3MjA2NzI2MDddLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6ODc5MTIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjozNTQsIm1heCI6WzAuOTY1OTI1ODcyMzI1ODk3MiwxLjAsMC45NjU5MjU5MzE5MzA1NDJdLCJtaW4iOlstMS4wLC0xLjAsLTAuOTY1OTI1OTMxOTMwNTQyXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjI3ODg4LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MzU0LCJtYXgiOlswLjAsMC4wXSwibWluIjpbMC4wLDAuMF0sInR5cGUiOiJWRUMyIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoyMjg5NiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjU3NiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6OTIxNjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxMjAsIm1heCI6WzAuMTkzNzM2NzYxODA4Mzk1MzksLTAuMDA4NjUwNjMwNzEyNTA5MTU1LDAuMTkzNzM2OTg1MzI1ODEzM10sIm1pbiI6Wy0wLjE5MzczNjkxMDgyMDAwNzMyLC01Ljg0OTU4NzkxNzMyNzg4MSwtMC4xOTM3MzY2NTc1MDAyNjcwM10sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0Ijo5MzYwMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjEyMCwibWF4IjpbMC45NjU5MjU4NzIzMjU4OTcyLDEuMCwwLjk2NTkyNTk5MTUzNTE4NjhdLCJtaW4iOlstMC45NjU5MjU5OTE1MzUxODY4LC0xLjAsLTAuOTY1OTI2MTEwNzQ0NDc2M10sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjozMDcyMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjEyMCwibWF4IjpbMC4wLDAuMF0sIm1pbiI6WzAuMCwwLjBdLCJ0eXBlIjoiVkVDIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoyNTIwMCwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjIwNCwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6OTUwNDAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxODAsIm1heCI6WzEuMCwyLjc0MDAxMDUyOTU3ODI4NWUtMDgsMS4wXSwibWluIjpbLTEuMCwtMC41MzcxMzExOTAyOTk5ODc4LC0xLjBdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6OTcyMDAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxODAsIm1heCI6WzAuOTY1OTI1ODcyMzI1ODk3MiwxLjAwLDAuOTY1OTI1OTMxOTMwNTQyXSwibWluIjpbLTAuOTY1OTI1ODcyMzI1ODk3MiwtMC44ODkzOTI3MzM1NzM5MTM2LC0wLjk2NTkyNTkzMTkzMDU0Ml0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjozMTY4MCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE4MCwibWF4IjpbMC4wLDAuMF0sIm1pbiI6WzAuMCwwLjBdLCJ0eXBlIjoiVkVDIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoyNjAxNiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI4MiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6OTkzNjAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxNzIsIm1heCI6WzAuODQ2NTk0NjMxNjcxOTA1NSwtMC4wNjAwMTgzMTU5MTEyOTMwMywwLjg0NjU5NDU3MjA2NzI2MDddLCJtaW4iOlstMC44NDY1OTQ1MTI0NjI2MTYsLTAuNDU3ODI1NDUyMDg5MzA5NywtMC44NDY1OTQ1NzIwNjcyNjA3XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjEwMTQyNCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE3MiwibWF4IjpbMC45NjU5MjU4NzIzMjU4OTcyLDMuMzQ5Nzk0NzUyNjkzOTI0ZS0wOCwwLjk2NTkyNTg3MjMyNTg5NzJdLCJtaW4iOlstMS4wLC0xLjAsLTAuOTY1OTI1ODcyMzI1ODk3Ml0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjozMzEyMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE3MiwibWF4IjpbMC4wLDAuMF0sIm1pbiI6WzAuMCwwLjBdLCJ0eXBlIjoiVkVDIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoyNzE0NCwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI4OCwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTAzNDg4LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NjAsIm1heCI6WzAuMTkzNzM2NzYxODA4Mzk1MzksLTAuMDA4NjUwNjMwNzEyNTA5MTU1LDAuMTkzNzM2NjQyNTk5MTA1ODNdLCJtaW4iOlstMC4xOTM3MzY2NDI1OTkxMDU4MywtMC40NDkyNjY3MzE3MzkwNDQyLC0wLjE5MzczNjY1NzUwMDI2NzAzXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjEwNDIwOCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjYwLCJtYXgiOlswLjk2NTkyNTgxMjcyMTI1MjQsNC4yMTUzMzEwMTc1NzYzMThlLTA4LDAuOTY1OTI1OTkxNTM1MTg2OF0sIm1pbiI6Wy0wLjk2NTkyNTgxMjcyMTI1MjQsLTEuMCwtMC45NjU5MjU5OTE1MzUxODY4XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjM0NDk2LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NjAsIm1heCI6WzAuMCwwLjBdLCJtaW4iOlswLjAsMC4wXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjowLCJieXRlT2Zmc2V0IjoyODI5NiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjEwMiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTA0OTI4LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MzA4LCJtYXgiOlswLjY2MjgyNTI4NjM4ODM5NzIsLTEuMjMyOTI1NDE1MDM5MDYyNSwxLjIxODk0NDQzMDM1MTI1NzNdLCJtaW4iOlstMC43NDU4NzUxMjAxNjI5NjM5LC0xLjk4Njg4NTA3MDgwMDc4MTMsLTEuMjIxODk0NDQzMDM1MTI1NzNdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTA4NjI0LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MzA4LCJtYXgiOlsxLjAsMS4wLDEuMF0sIm1pbiI6Wy0xLjAsLTEuMCwtMS4wXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjM0OTc2LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MzA4LCJtYXgiOlswLjg3NSwxLjBdLCJtaW4iOlswLjEyNSwwLjBdLCJ0eXBlIjoiVkVDIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjoyODcwNCwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjU1MiwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTEyMzIwLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTUsIm1heCI6WzAuMzcyNjQ2OTg3NDM4MjAxOSwtMS4zMjcyNjA5NzEwNjkzMzYsMC45MjU5NTU5NTEyMTM4MzY3XSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjExMjUwMCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE1LCJtYXgiOlswLjAsMS4wLDIuNzA4Nzg4NzcwMTc4MjE2NWUtMDZdLCJtaW4iOlstMC4wMDA5ODk5NjQ1ODEwOTQ2ODIyLDAuOTk5OTk5NTgyNzY3NDg2NiwtMi43MDg3ODg3NzAxNzgyMTY1ZS0wNl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjozNzQ0MCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE1LCJtYXgiOlswLjczMDI5ODc1NzU1MzEwMDYsMC42NTMxMTg2MTAzODIwODAxXSwibWluIjpbMC4zNzUsMC4wNjU0MDY2MjA1MDI0NzE5Ml0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjozMDkxMiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjI0LCJ0eXBlIjoiU0NBTEFSIn0seyJidWZmZXJWaWV3IjoyLCJieXRlT2Zmc2V0IjoxMTI2ODAsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoxNzM2LCJtYXgiOls1OS4xNTUxMDk0MDU1MTc1OCw5LjczMTU4ODM2MzY0NzQ2MSw4LjUwMTA4MzM3NDAyMzQzOF0sIm1pbiI6Wy0xLjAsLTIuNjQ1MDM2NDU4OTY5MTE2LC0xMDEuNzAxMDk1NTgxMDU0NjldLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTMzNTEyLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6MTczNiwibWF4IjpbMS4wLDEuMCwwLjk4MTIyNDQxNzY4NjQ2MjRdLCJtaW4iOlstMC45OTkwOTg5NTY1ODQ5MzA0LC0wLjk5OTYwMjM3NzQxNDcwMzQsLTAuOTk3NzEwNDA2NzgwMjQyOV0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjozNzU2MCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjE3MzYsIm1heCI6WzEuMCwxLjBdLCJtaW4iOlswLjAsMC4wXSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjMxMDA4LCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MjcyNCwidHlwZSI6IlNDQUxBUiJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTU0MzQ0LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NDAsIm1heCI6WzU4LjYwMDc5MTkzMTE1MjM0NCw4LjYyMzA5MTY5NzY5Mjg3MSw3Ljc1Mjc3MTM3NzU2MzQ3N10sIm1pbiI6WzUuNDgxNTQzMDY0MTE3NDMyLC0yLjUxNzg1NzU1MTU3NDcwNywtOTkuMDEwNjk2NDExMTMyODFdLCJ0eXBlIjoiVkVDMyJ9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MTU0ODI0LCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NDAsIm1heCI6Wy0wLjMxMDU2ODYwMDg5MzAyMDYzLDAuOTA1MjU2OTI3MDEzMzk3MiwtMC4wMTY5MDc3NzM5MTE5NTI5NzJdLCJtaW4iOlstMC45OTg0NjI0Mzg1ODMzNzQsMC4wNTI3OTE5OTAzMzk3NTYwMSwtMC4yODk5MjYwNTIwOTM1MDU4Nl0sInR5cGUiOiJWRUMzIn0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0Ijo1MTQ0OCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjQwLCJtYXgiOlswLjYyNSwwLjc1XSwibWluIjpbMC4zNzUsMC41XSwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjQxOTA0LCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MTA4LCJ0eXBlIjoiU0NBTEFSIn1dLCJhc3NldCI6eyJleHRyYXMiOnsiYXV0aG9yIjoiUGFuZGVybG9uIChodHRwczovL3NrZXRjaGZhYi5jb20vaHlwZW91dDEyMzUpIiwibGljZW5zZSI6IkNDLUJZLTQuMCAoaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbGljZW5zZXMvYnkvNC4wLykiLCJzb3VyY2UiOiJodHRwczovL3NrZXRjaGZhYi5jb20vM2QtbW9kZWxzL3BvcnNjaGUtOTExLTkzMC1sb3ctcG9seS00NzE1YTgwOWQyMWM0MDVkOTE4Mjg3ZTc1OWE2Njc5YyIsInRpdGxlIjoicG9yc2NoZSA5MTEgOTMwIGxvdyBwb2x5In0sImdlbmVyYXRvciI6IlNrZXRjaGZhYi0xNS4yNy4wIiwidmVyc2lvbiI6IjIuMCJ9LCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlTGVuZ3RoIjo0MjMzNiwibmFtZSI6ImZsb2F0QnVmZmVyVmlld3MiLCJ0YXJnZXQiOjM0OTYzfSx7ImJ1ZmZlciI6MCwiYnl0ZUxlbmd0aCI6NTE3NjgsImJ5dGVPZmZzZXQiOjQyMzM2LCJieXRlU3RyaWRlIjo4LCJuYW1lIjoiZmxvYXRCdWZmZXJWaWV3cyIsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlTGVuZ3RoIjoxNTUzMDQsImJ5dGVPZmZzZXQiOjk0MTA0LCJieXRlU3RyaWRlIjoxMiwibmFtZSI6ImZsb2F0QnVmZmVyVmlld3MiLCJ0YXJnZXQiOjM0OTYyfV0sImJ1ZmZlcnMiOlt7ImJ5dGVMZW5ndGgiOjI0OTQwOH1dLCJtYXRlcmlhbHMiOlt7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDAxIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC44LDAuOCwwLjgsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMH19LHsiZG91YmxlU2lkZWQiOnRydWUsIm5hbWUiOiJNYXRlcmlhbC4wMDIiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLjAzNzQxLDAuMDM3NDEsMC4wMzc0MSwxLjBdLCJtZXRhbGxpY0ZhY3RvciI6MC4wLCJyb3VnaG5lc3NGYWN0b3IiOjAuNX19LHsiZG91YmxlU2lkZWQiOnRydWUsIm5hbWUiOiJNYXRlcmlhbC4wMDQiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLjAwNDI0MTg2LDAuMDA0MjQxODYsMC4wMDQyNDE4NiwxLjBdLCJtZXRhbGxpY0ZhY3RvciI6MC4wLCJyb3VnaG5lc3NGYWN0b3IiOjAuNX19LHsiZG91YmxlU2lkZWQiOnRydWUsIm5hbWUiOiJNYXRlcmlhbC4wMzIifSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDMzIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC43MTQ3MDQsMC4xNDg3MTMsMC4wNTkyNjAyLDEuMF0sIm1ldGFsbGljRmFjdG9yIjowLjg5NDIzMSwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDM0IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC44LDAuMTQ1ODQ0LDAuMDUxMTI1NywxLjBdLCJtZXRhbGxpY0ZhY3RvciI6MC4wLCJyb3VnaG5lc3NGYWN0b3IiOjAuNX19LHsiZG91YmxlU2lkZWQiOnRydWUsIm5hbWUiOiJNYXRlcmlhbC4wMzUiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLjQ0NDgyMSwwLjQ0NDgyMSwwLjQ0NDgyMSwxLjBdLCJtZXRhbGxpY0ZhY3RvciI6MC41NjczMDgsInJvdWdobmVzc0ZhY3RvciI6MC4xOTIzMDh9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDA1IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4wMDk2ODA1MSwwLjAwOTY4MDUxLDAuMDA5NjgwNTEsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDA2IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC40ODM1ODMsMC40ODM1ODMsMC40ODM1ODMsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDA3IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4xMjM3MTEsMC4xMjM3MTEsMC4xMjM3MTEsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDA4IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4wMDk2ODA1MSwwLjAwOTY4MDUxLDAuMDA5NjgwNTEsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDA5IiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC40ODM1ODMsMC40ODM1ODMsMC40ODM1ODMsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fSx7ImRvdWJsZVNpZGVkIjp0cnVlLCJuYW1lIjoiTWF0ZXJpYWwuMDEwIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4xMjM3MTEsMC4xMjM3MTEsMC4xMjM3MTEsMS4wXSwibWV0YWxsaWNGYWN0b3IiOjAuMCwicm91Z2huZXNzRmFjdG9yIjowLjV9fV0sIm1lc2hlcyI6W3sibmFtZSI6Ik9iamVjdF8wIiwicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJOT1JNQUwiOjEsIlBPU0lUSU9OIjowLCJURVhDT09SRF8wIjoyfSwiaW5kaWNlcyI6MywibWF0ZXJpYWwiOjAsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzEiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6NSwiUE9TSVRJT04iOjQsIlRFWENPT1JEXzAiOjZ9LCJpbmRpY2VzIjo3LCJtYXRlcmlhbCI6MSwibW9kZSI6NH1dfSx7Im5hbWUiOiJPYmplY3RfMiIsInByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiTk9STUFMIjo5LCJQT1NJVElPTiI6OCwiVEVYQ09PUkRfMCI6MTB9LCJpbmRpY2VzIjoxMSwibWF0ZXJpYWwiOjIsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzMiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MTMsIlBPU0lUSU9OIjoxNiwiVEVYQ09PUkRfMCI6MTR9LCJpbmRpY2VzIjoxOSwibWF0ZXJpYWwiOjMsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzQiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MTcsIlBPU0lUSU9OIjoxNiwiVEVYQ09PUkRfMCI6MTh9LCJpbmRpY2VzIjoxOSwibWF0ZXJpYWwiOjQsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzUiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MjEsIlBPU0lUSU9OIjoyMCwiVEVYQ09PUkRfMCI6MjJ9LCJpbmRpY2VzIjoyMywibWF0ZXJpYWwiOjUsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzYiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MjUsIlBPU0lUSU9OIjoyNCwiVEVYQ09PUkRfMCI6MjZ9LCJpbmRpY2VzIjoyNywibWF0ZXJpYWwiOjYsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzciLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MjksIlBPU0lUSU9OIjoyOCwiVEVYQ09PUkRfMCI6MzB9LCJpbmRpY2VzIjozMSwibWF0ZXJpYWwiOjcsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzgiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MzMsIlBPU0lUSU9OIjozMiwiVEVYQ09PUkRfMCI6MzR9LCJpbmRpY2VzIjozNSwibWF0ZXJpYWwiOjgsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzkiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6MzcsIlBPU0lUSU9OIjozNiwiVEVYQ09PUkRfMCI6Mzh9LCJpbmRpY2VzIjozOSwibWF0ZXJpYWwiOjksIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzEwIiwicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJOT1JNQUwiOjQxLCJQT1NJVElPTiI6NDAsIlRFWENPT1JEXzAiOjQyfSwiaW5kaWNlcyI6NDMsIm1hdGVyaWFsIjoxMCwibW9kZSI6NH1dfSx7Im5hbWUiOiJPYmplY3RfMTEiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6NDUsIlBPU0lUSU9OIjo0NCwiVEVYQ09PUkRfMCI6NDZ9LCJpbmRpY2VzIjo0NywibWF0ZXJpYWwiOjExLCJtb2RlIjo0fV19LHsibmFtZSI6Ik9iamVjdF8xMiIsInByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiTk9STUFMIjo0OSwiUE9TSVRJT04iOjQ4LCJURVhDT09SRF8wIjo1MH0sImluZGljZXMiOjUxLCJtYXRlcmlhbCI6MTIsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzEzIiwicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJOT1JNQUwiOjUzLCJQT1NJVElPTiI6NTIsIlRFWENPT1JEXzAiOjU0fSwiaW5kaWNlcyI6NTUsIm1hdGVyaWFsIjo3LCJtb2RlIjo0fV19LHsibmFtZSI6Ik9iamVjdF8xNCIsInByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiTk9STUFMIjo1NywiUE9TSVRJT04iOjU2LCJURVhDT09SRF8wIjo1OH0sImluZGljZXMiOjU5LCJtYXRlcmlhbCI6OCwibW9kZSI6NH1dfSx7Im5hbWUiOiJPYmplY3RfMTUiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6NjEsIlBPU0lUSU9OIjo2MCwiVEVYQ09PUkRfMCI6NjJ9LCJpbmRpY2VzIjo2MywibWF0ZXJpYWwiOjksIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzE2IiwicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJOT1JNQUwiOjY1LCJQT1NJVElPTiI6NjQsIlRFWENPT1JEXzAiOjY2fSwiaW5kaWNlcyI6NjcsIm1hdGVyaWFsIjowLCJtb2RlIjo0fV19LHsibmFtZSI6Ik9iamVjdF8xNyIsInByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiTk9STUFMIjo2OSwiUE9TSVRJT04iOjY4LCJURVhDT09SRF8wIjo3MH0sImluZGljZXMiOjcxLCJtYXRlcmlhbCI6NywibW9kZSI6NH1dfSx7Im5hbWUiOiJPYmplY3RfMTgiLCJwcmltaXRpdmVzIjpbeyJhdHRyaWJ1dGVzIjp7Ik5PUk1BTCI6NzMsIlBPU0lUSU9OIjo3MiwiVEVYQ09PUkRfMCI6NzR9LCJpbmRpY2VzIjo3NSwibWF0ZXJpYWwiOjEsIm1vZGUiOjR9XX0seyJuYW1lIjoiT2JqZWN0XzE5IiwicHJpbWl0aXZlcyI6W3siYXR0cmlidXRlcyI6eyJOT1JNQUwiOjc3LCJQT1NJVElPTiI6NzYsIlRFWENPT1JEXzAiOjc4fSwiaW5kaWNlcyI6NzksIm1hdGVyaWFsIjo4LCJtb2RlIjo0fV19XSwibm9kZXMiOlt7ImNoaWxkcmVuIjpbMV0sIm1hdHJpeCI6WzEuMCwwLjAsMC4wLDAuMCwwLjAsMi4yMjA0NDYwNDkyNTAzMTNlLTE2LC0xLjAsMC4wLDAuMCwxLjAsMi4yMjA0NDYwNDkyNTAzMTNlLTE2LDAuMCwwLjAsMC4wLDAuMCwxLjBdLCJuYW1lIjoiU2tldGNoZmFiX21vZGVsIn0seyJjaGlsZHJlbiI6WzJdLCJuYW1lIjoicm9vdCJ9LHsiY2hpbGRyZW4iOlszLDExLDE1LDE5LDIzLDI2XSwibWF0cml4IjpbMS4wLDAuMCwwLjAsMC4wLDAuMCwyLjIyMDQ0NjA0OTI1MDMxM2UtMTYsMS4wLDAuMCwwLjAsLTEuMCwyLjIyMDQ0NjA0OTI1MDMxM2UtMTYsMC4wLDAuMCwwLjAsMC4wLDEuMF0sIm5hbWUiOiJHTFRGX1NjZW5lUm9vdE5vZGUifSx7ImNoaWxkcmVuIjpbNCw1LDYsNyw4LDksMTBdLCJtYXRrixgiOlswLjI0MzM4NzcyODkyOTUxOTY1LDAuMCwwLjAsMC4wLDAuMCwwLjYwNjMyMjEwOTY5OTI0OTMsMC4wLDAuMCwwLjAsMC4wLDAuNjA2MzIyMTA5Njk5MjQ5MywwLjAsMC4xMjE0MTk1NzEzNDAwODQwOCwwLjk1OTkyNDEwMTgyOTUyODgsMC4wLDEuMF0sIm5hbWUiOiJjYXJfMCJ9LHsibWVzaCI6MCwibmFtZSI6Ik9iamVjdF80In0seyJtZXNoIjoxLCJuYW1lIjoiT2JqZWN0XzUifSx7Im1lc2giOjIsIm5hbWUiOiJPYmplY3RfNiJ9LHsibWVzaCI6MywibmFtZSI6Ik9iamVjdF83In0seyJtZXNoIjo0LCJuYW1lIjoiT2JqZWN0XzgifSx7Im1lc2giOjUsIm5hbWUiOiJPYmplY3RfOSJ9LHsibWVzaCI6NiwibmFtZSI6Ik9iamVjdF8xMCJ9LHsiY2hpbGRyZW4iOlsxMiwxMywxNF0sIm1hdHJpeCI6WzAuMzI0OTYwMDY5MTQzMzA5MjcsLTAuMDgxMDIxNjQ3Mjg2ODIxNCwtMS4wNTA3NTg2MjQxMjMwNDkxZS0wOCwwLjAsMS4wNTA3NTg2MjQxMjMwNDkxZS0wOCwtMS4yOTAxNjkzOTcyMDIwNzYyZS0wOSwwLjMzNDkwODI3Njc5NjM0MDgsMC4wLC0wLjA4MTAyMTY0NzI4NjgyMTQsLTAuMzI0OTYwMDY5MTQzMzA5NDQsMS4yOTAxNjkzNjAwMTk3ODgyZS0wOSwwLjAsLTEuMzYxMDg0NDYxMjEyMTU4MiwwLjQ5NTkwODIwMDc0MDgxNDIsMC45ODA5ODYyOTcxMzA1ODQ3LDEuMF0sIm5hbWUiOiJ3aGVlbGYyXzEifSx7Im1lc2giOjcsIm5hbWUiOiJPYmplY3RfMTIifSx7Im1lc2giOjgsIm5hbWUiOiJPYmplY3RfMTMifSx7Im1lc2giOjksIm5hbWUiOiJPYmplY3RfMTQifSx7ImNoaWxkcmVuIjpbMTYsMTcsMThdLCJtYXRrixgiOlswLjMyNDk2MDA2OTE0MzMwOTI3LC0wLjA4MTAyMTY0NzI4NjgyMTQsLTEuMDUwNzU4NjI0MTIzMDQ5MWUtMDgsMC4wLDEuMDUwNzU4NjI0MTIzMDQ5MWUtMDgsLTEuMjkwMTY5Mzk3MjAyMDc2MmUtMDksMC4zMzQ5MDgyNzY3OTYzNDA4LDAuMCwtMC4wODEwMjE2NDcyODY4MjE0LC0wLjMyNDk2MDA2OTE0MzMwOTQ0LDEuMjkwMTY5MzYwMDE5Nzg4MmUtMDksMC4wLDEuMTQwNjA1NDQ5Njc2NTEzNywwLjQ5NTkwODIwMDc0MDgxNDIsMC45ODA5ODYyOTcxMzA1ODQ3LDEuMF0sIm5hbWUiOiJ3aGVlbGJfMiJ9LHsibWVzaCI6MTAsIm5hbWUiOiJPYmplY3RfMTYifSx7Im1lc2giOjExLCJuYW1lIjoiT2JqZWN0XzE3In0seyJtZXNoIjoxMiwibmFtZSI6Ik9iamVjdF8xOCJ9LHsiY2hpbGRyZW4iOlsyMCwyMSwyMl0sIm1hdHJpeCI6WzAuMzI0OTYwMDY5MTQzMzA5MjcsLTAuMDgxMDIxNjQ3Mjg2ODIxNCwtMS4wNTA3NTg2MjQxMjMwNDkxZS0wOCwwLjAsMS4wNTA3NTg2MjQxMjMwNDkxZS0wOCwtMS4yOTAxNjkzOTcyMDIwNzYyZS0wOSwwLjMzNDkwODI3Njc5NjM0MDgsMC4wLC0wLjA4MTAyMTY0NzI4NjgyMTQsLTAuMzI0OTYwMDY5MTQzMzA5NDQsMS4yOTAxNjkzNjAwMTk3ODgyZS0wOSwwLjAsLTEuMzYxMDg0NDYxMjEyMTU4MiwwLjQ5NTkwODIwMDc0MDgxNDIsMC45ODA5ODYyOTcxMzA1ODQ3LDEuMF0sIm5hbWUiOiJ3aGVlbGYxXzMifSx7Im1lc2giOjEzLCJuYW1lIjoiT2JqZWN0XzIwIn0seyJtZXNoIjoxNCwibmFtZSI6Ik9iamVjdF8yMSJ9LHsibWVzaCI6MTUsIm1heCI6Ik9iamVjdF8yMiJ9LHsiY2hpbGRyZW4iOlsyNCwyNV0sIm1hdHJpeCI6WzAuNDkyNjE3MzY4Njk4MTIwMSwwLjAsMC4wLDAuMCwwLjAsMC40OTI2MTczNjg2OTgxMjAxLDAuMCwwLjAsMC4wLDAuMCwwLjQ5MjYxNzM2ODY5ODEyMDEsMC4wLDEuOTgzNjE5ODA5MTUwNjk1OCwxLjgzNjI4ODQ1MjE0ODQzNzUsMC4wLDEuMF0sIm5hbWUiOiJzcG9pbGVyXzQifSx7Im1lc2giOjE2LCJuYW1lIjoiT2JqZWN0XzI0In0seyJtZXNoIjoxNywibmFtZSI6Ik9iamVjdF8yNSJ9LHsiY2hpbGRyZW4iOlsyNywyOF0sIm1hdHJpeCI6WzAuMDEzNzcxNjA0MjIyNDU1MTU3LC0wLjAwMDIxMTgxNTY5ODAxNTc5OTU2LC0wLjAwNjEyOTEwODg0ODE4NTY0MzUsMC4wLC0wLjAxNzg3NTkxODgwODk2NDgwNiwtMC4wNzM5NjY4NDEzNzQ3ODkwMSwtMC4wMzc2MDk1MDM1MjIyMzE4NiwtMC4wLDAuMDA1MjQ3MDQyNjY0ODQyNjkyLC0wLjAwNzM5MjYwOTkyOTM3OTA3NSwwLjAxMjA0NTE1NDk0NDk1NjQ5OSwwLjAsLTAuNTA5MzMxODgxOTk5OTY5NSwxLjA2Njc4NTIxNjMzMTQ4MiwwLjg2MDUyMTU1NDk0Njg5OTQsMS4wXSwibmFtZSI6Im1pcnJvcl81In0seyJtZXNoIjoxOCwibmFtZSI6Ik9iamVjdF8yNyJ9LHsibWVzaCI6MTksIm1heCI6Ik9iamVjdF8yOCJ9XSwic2NlbmUiOjAsInNjZW5lcyI6W3sibmFtZSI6IlNrZXRjaGZhYl9TY2VuZSIsIm5vZGVzIjpbMF19XX0=';
-            
-            loader.load(porscheUrl, function (gltf) {
-                const model = gltf.scene;
-                model.scale.set(2.5, 2.5, 2.5);
-                model.rotation.y = Math.PI; // Face "Forward"
-                
-                car.add(model);
-                carBody = model;
-                scene.add(car);
-                
-                car.position.set(0, 50, 0); // Start high
-            });
+            car.position.set(0, 1, 0);
         }
 
-        function createTrackObjects() {
-            window.physicsObjects = [];
-            // Ramps (Red boxes)
+        function createTrack() {
+            // Ramps
             const rampLocations = [
-                { lat: 41.9840, lon: -87.6530, color: 0xff6600, w: 25, h: 4, l: 30, boost: 20 }, 
-                { lat: 41.9050, lon: -87.6250, color: 0xff0000, w: 40, h: 10, l: 60, boost: 40 }
+                { lat: 41.9840, lon: -87.6530, color: 0xff6600 },
+                { lat: 41.9050, lon: -87.6250, color: 0xff0000 }
             ];
 
-            const geo = new THREE.BoxGeometry(1, 1, 1);
-            
             rampLocations.forEach(data => {
                 const pos = gpsToLocal(data.lat, data.lon);
+                const geo = new THREE.BoxGeometry(25, 4, 30);
                 const mat = new THREE.MeshStandardMaterial({ color: data.color });
                 const mesh = new THREE.Mesh(geo, mat);
-                
-                mesh.scale.set(data.w, data.h, data.l);
-                mesh.position.set(pos.x, data.h / 2, pos.z);
-                mesh.rotation.x = -0.2; // Incline
-                
+                mesh.position.set(pos.x, 2, pos.z);
+                mesh.rotation.x = -0.2;
                 scene.add(mesh);
-                
-                // Add to physics
-                window.physicsObjects.push({
-                    box: new THREE.Box3().setFromObject(mesh),
-                    type: 'ramp',
-                    boost: data.boost
-                });
             });
         }
 
@@ -308,57 +252,12 @@
                 if (keys.right) carState.rotation -= turnSpeed;
             }
 
-            carState.velocity.x = Math.sin(carState.rotation) * carState.speed;
-            carState.velocity.z = Math.cos(carState.rotation) * carState.speed;
-
-            car.position.x += carState.velocity.x * dt;
-            car.position.z += carState.velocity.z * dt;
+            car.position.x += Math.sin(carState.rotation) * carState.speed * dt;
+            car.position.z += Math.cos(carState.rotation) * carState.speed * dt;
             car.rotation.y = carState.rotation;
 
-            // Ground Physics (Raycasting)
-            if (tilesRenderer) {
-                const rayOrigin = car.position.clone();
-                rayOrigin.y += 100; // Cast from sky down
-                raycaster.set(rayOrigin, downVector);
-                
-                const intersects = raycaster.intersectObject(tilesRenderer.group, true);
-                if (intersects.length > 0) {
-                    carState.groundHeight = intersects[0].point.y;
-                    carState.onGround = true;
-                    // Snap if close
-                    if (!carState.airborne && car.position.y < carState.groundHeight + 5.0) {
-                         car.position.y = carState.groundHeight + 0.5;
-                         carState.verticalVel = 0;
-                    }
-                } else {
-                    carState.onGround = false;
-                }
-            }
-
-            // Ramp Collision
-            if (window.physicsObjects) {
-                const carBox = new THREE.Box3().setFromObject(car);
-                carBox.expandByScalar(-1.0);
-                for (const obj of window.physicsObjects) {
-                    if (carBox.intersectsBox(obj.box)) {
-                        if (obj.type === 'ramp' && !carState.airborne) {
-                            carState.airborne = true;
-                            carState.verticalVel = obj.boost;
-                        }
-                    }
-                }
-            }
-
-            // Gravity
-            if (carState.airborne || car.position.y > carState.groundHeight + 1.0) {
-                carState.verticalVel -= 40 * dt;
-                car.position.y += carState.verticalVel * dt;
-                if (car.position.y <= carState.groundHeight + 0.5) {
-                    car.position.y = carState.groundHeight + 0.5;
-                    carState.airborne = false;
-                    carState.verticalVel = 0;
-                }
-            }
+            // Keep on ground
+            car.position.y = 1;
 
             document.getElementById('speed-value').innerText = Math.abs(Math.round(carState.speed));
         }
@@ -369,14 +268,18 @@
             const dt = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
-            if (tilesRenderer) tilesRenderer.update();
             updatePhysics(dt);
 
             if (car) {
-                const offset = new THREE.Vector3(0, 5, 12).applyMatrix4(car.matrixWorld);
-                camera.position.lerp(offset, 0.1);
+                const offset = new THREE.Vector3(
+                    Math.sin(carState.rotation) * -15,
+                    5,
+                    Math.cos(carState.rotation) * -15
+                );
+                camera.position.lerp(car.position.clone().add(offset), 0.1);
                 camera.lookAt(car.position);
             }
+            
             renderer.render(scene, camera);
         }
 
@@ -384,7 +287,6 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            if (tilesRenderer) tilesRenderer.setResolutionFromRenderer(camera, renderer);
         }
 
         init();
