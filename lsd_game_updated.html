@@ -564,36 +564,46 @@ const LSD_CENTERLINE = [
 
 // Helper function to get road X position at any Z coordinate
 function getRoadXAtZ(z) {
+    if (!LSD_CENTERLINE || LSD_CENTERLINE.length === 0) {
+        console.error('LSD_CENTERLINE not available');
+        return 0;
+    }
+
     const y = -z; // Convert z to LSD_CENTERLINE y coordinate
 
-    // Find closest points in LSD_CENTERLINE
-    let closest1 = LSD_CENTERLINE[0];
-    let closest2 = LSD_CENTERLINE[1];
+    // Find the two closest points that bracket this y value
+    let bestI = 0;
     let minDist = Infinity;
 
-    for (let i = 0; i < LSD_CENTERLINE.length - 1; i++) {
-        const p1 = LSD_CENTERLINE[i];
-        const p2 = LSD_CENTERLINE[i + 1];
-
-        // Check if y is between p1.y and p2.y
-        if ((p1.y <= y && y <= p2.y) || (p2.y <= y && y <= p1.y)) {
-            closest1 = p1;
-            closest2 = p2;
-            break;
-        }
-
-        // Otherwise find closest point
-        const dist = Math.abs(p1.y - y);
+    for (let i = 0; i < LSD_CENTERLINE.length; i++) {
+        const dist = Math.abs(LSD_CENTERLINE[i].y - y);
         if (dist < minDist) {
             minDist = dist;
-            closest1 = p1;
-            closest2 = p2;
+            bestI = i;
         }
     }
 
-    // Interpolate X position
-    const t = (y - closest1.y) / (closest2.y - closest1.y + 0.0001);
-    return closest1.x + t * (closest2.x - closest1.x);
+    // Use the closest point and its neighbor for interpolation
+    let i1 = bestI;
+    let i2 = bestI + 1;
+
+    // Handle edge cases
+    if (i2 >= LSD_CENTERLINE.length) {
+        i2 = bestI;
+        i1 = bestI - 1;
+    }
+    if (i1 < 0) i1 = 0;
+
+    const p1 = LSD_CENTERLINE[i1];
+    const p2 = LSD_CENTERLINE[i2];
+
+    // Simple interpolation (or just return closest point if same)
+    if (p1 === p2 || Math.abs(p2.y - p1.y) < 0.01) {
+        return p1.x;
+    }
+
+    const t = (y - p1.y) / (p2.y - p1.y);
+    return p1.x + t * (p2.x - p1.x);
 }
 
 // Landmarks along the route (approximate y positions)
