@@ -708,23 +708,30 @@ function init() {
     moon.position.set(-100, 200, 100);
     scene.add(moon);
 
+    console.log('=== INITIALIZATION START ===');
+    console.log('Car starting position:', LSD_CENTERLINE[0].x, 0.5, -LSD_CENTERLINE[0].y);
+
     // Create ground plane
     createGround();
 
     // Create road
     createRoad();
-    
+
     // Create car
     createCar();
-    
+    console.log('Car created at:', car.position.x, car.position.y, car.position.z);
+    console.log('Car has', car.children.length, 'children');
+
     // Create street lights
     createStreetLights();
-    
+
     // Create lake
     createLake();
-    
+
     // Create city with real GPS-positioned buildings (includes Navy Pier Ferris Wheel)
     createCity();
+
+    console.log('=== Scene has', scene.children.length, 'objects ===');
     
     // Events
     window.addEventListener('resize', onResize);
@@ -766,6 +773,11 @@ function init() {
     };
     document.addEventListener('click', startMusic, { once: true });
     document.addEventListener('keydown', startMusic, { once: true });
+
+    console.log('=== INITIALIZATION COMPLETE ===');
+    console.log('Camera initial position:', camera.position.x, camera.position.y, camera.position.z);
+    console.log('Renderer canvas size:', renderer.domElement.width, 'x', renderer.domElement.height);
+    console.log('Renderer parent element:', renderer.domElement.parentElement ? 'attached' : 'NOT ATTACHED');
 }
 
 function startGameFromMenu() {
@@ -2628,27 +2640,47 @@ function resetRace() {
     startCountdown();
 }
 
+let frameCount = 0;
+let lastDebugTime = 0;
+
 function animate() {
     requestAnimationFrame(animate);
-    
+
     const now = performance.now();
     let dt = (now - lastTime) / 1000;
     lastTime = now;
-    
+
     // Cap delta time to prevent physics explosions after tab switch or lag spike
     dt = Math.min(dt, 1/30);
-    
+
+    // Debug logging on first frame
+    if (frameCount === 0) {
+        console.log('=== FIRST FRAME RENDER ===');
+        console.log('Car position:', car.position.x.toFixed(1), car.position.y.toFixed(1), car.position.z.toFixed(1));
+        console.log('Camera position:', camera.position.x.toFixed(1), camera.position.y.toFixed(1), camera.position.z.toFixed(1));
+        console.log('Scene children:', scene.children.length);
+        console.log('Renderer size:', renderer.domElement.width, 'x', renderer.domElement.height);
+    }
+
+    // Debug logging every second
+    if (now - lastDebugTime > 1000) {
+        console.log(`Frame ${frameCount} - Car: (${car.position.x.toFixed(0)}, ${car.position.y.toFixed(1)}, ${car.position.z.toFixed(0)}) Camera: (${camera.position.x.toFixed(0)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(0)}) Speed: ${carState.speed.toFixed(1)}`);
+        lastDebugTime = now;
+    }
+
+    frameCount++;
+
     // Only update physics if not frozen (countdown)
     if (!raceState.frozen) {
         updatePhysics(dt);
     }
-    
+
     updateCamera();
     updateHUD();
     updateMinimap();
     updateEngineSound();
     updateRaceTimer();
-    
+
     // Animate ferris wheel
     if (window.ferrisWheel) {
         window.ferrisWheel.userData.time += dt;
@@ -2659,7 +2691,7 @@ function animate() {
             }
         });
     }
-    
+
     renderer.render(scene, camera);
 }
 
