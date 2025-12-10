@@ -1021,14 +1021,21 @@ function createGround() {
     // Create a large map-like textured ground plane
     const groundSize = 40000; // Large enough to cover entire map area
 
-    // Satellite imagery options:
+    // Satellite imagery options - Try each one until you find one that works:
 
-    // Option 1: Google Maps Static API (HIGH QUALITY - Enable "Maps Static API" in Google Cloud Console)
-    // Using scale=2 to get 1280x1280 pixel resolution (2x detail)
-    // Center: Lake Shore Drive, Chicago | Zoom 13 for detailed view
-    const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=13&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+    // Option 1: Google Hybrid (satellite + road labels) - MOST DETAILED
+    // const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=14&size=640x640&scale=2&maptype=hybrid&key=${GOOGLE_MAPS_API_KEY}`;
 
-    // Option 2: ESRI World Imagery (free backup, lower quality)
+    // Option 2: Google Satellite (pure satellite, no labels) - VERY ZOOMED IN
+    const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=14&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // Option 3: Google Satellite (wider view) - SHOWS MORE AREA
+    // const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=12&size=640x640&scale=2&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // Option 4: Google Roadmap (for debugging - should show clear roads/water)
+    // const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=13&size=640x640&scale=2&maptype=roadmap&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // Option 5: ESRI World Imagery (free backup if Google fails)
     // const SATELLITE_IMAGE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/11/761/535';
 
     // To disable satellite imagery and use procedural texture:
