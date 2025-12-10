@@ -1344,112 +1344,91 @@ function createStartFinishLines(roadWidth) {
 
 function createCar() {
     car = new THREE.Group();
-    
-    // Create a simple environment map for reflections
-    const envMapSize = 128;
-    const envMapCanvas = document.createElement('canvas');
-    envMapCanvas.width = envMapSize;
-    envMapCanvas.height = envMapSize;
-    const ctx = envMapCanvas.getContext('2d');
-    
-    // Gradient for fake environment - dark bottom, lighter top with warm tones
-    const gradient = ctx.createLinearGradient(0, envMapSize, 0, 0);
-    gradient.addColorStop(0, '#111122');
-    gradient.addColorStop(0.3, '#222244');
-    gradient.addColorStop(0.5, '#334455');
-    gradient.addColorStop(0.7, '#ffaa55'); // Street light color
-    gradient.addColorStop(1, '#223344');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, envMapSize, envMapSize);
-    
-    // Add some fake light spots
-    ctx.fillStyle = 'rgba(255, 170, 85, 0.8)';
-    for (let i = 0; i < 10; i++) {
-        const x = Math.random() * envMapSize;
-        const y = envMapSize * 0.3 + Math.random() * envMapSize * 0.4;
-        ctx.beginPath();
-        ctx.arc(x, y, 5 + Math.random() * 10, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    const envTexture = new THREE.CanvasTexture(envMapCanvas);
-    envTexture.mapping = THREE.EquirectangularReflectionMapping;
-    
-    // Car body - highly reflective
-    const bodyGeometry = new THREE.BoxGeometry(2, 0.8, 4.5);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x111111,
-        metalness: 1.0,
-        roughness: 0.1,
-        envMap: envTexture,
-        envMapIntensity: 1.5
-    });
-    carBody = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    carBody.position.y = 0.5;
-    car.add(carBody);
-    
-    // Roof - glossy black
-    const roofGeometry = new THREE.BoxGeometry(1.8, 0.6, 2);
-    const roofMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x111111,
-        metalness: 0.9,
-        roughness: 0.15,
-        envMap: envTexture,
-        envMapIntensity: 1.2
-    });
-    const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-    roof.position.set(0, 1.1, -0.3);
-    car.add(roof);
-    
-    // Wheels
-    const wheelGeometry = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x111111,
-        metalness: 0.3,
-        roughness: 0.7
-    });
-    
-    const wheelPositions = [
-        { x: -1, z: 1.3 },
-        { x: 1, z: 1.3 },
-        { x: -1, z: -1.3 },
-        { x: 1, z: -1.3 }
-    ];
-    
-    wheelPositions.forEach(pos => {
-        const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(pos.x, 0.35, pos.z);
-        car.add(wheel);
-    });
-    
-    // Headlights
-    const headlightGeometry = new THREE.SphereGeometry(0.15, 8, 8);
-    const headlightMaterial = new THREE.MeshBasicMaterial({ color: 0xffffaa });
-    
-    [-0.6, 0.6].forEach(x => {
-        const headlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-        headlight.position.set(x, 0.5, 2.3);
-        car.add(headlight);
-        
-        // Headlight beam
-        const light = new THREE.SpotLight(0xffffee, 2, 100, Math.PI / 6, 0.5);
-        light.position.set(x, 0.5, 2.3);
-        light.target.position.set(x, 0, 50);
-        car.add(light);
-        car.add(light.target);
-    });
-    
-    // Taillights
-    const taillightGeometry = new THREE.BoxGeometry(0.3, 0.15, 0.1);
-    const taillightMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    
-    [-0.7, 0.7].forEach(x => {
-        const taillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
-        taillight.position.set(x, 0.5, -2.3);
-        car.add(taillight);
-    });
-    
+
+    // Load the Porsche 911 GLB model
+    const loader = new THREE.GLTFLoader();
+
+    loader.load(
+        'porsche_911_930_low_poly.glb',
+        function (gltf) {
+            const porscheModel = gltf.scene;
+
+            // Store reference to the model for body rotation
+            carBody = porscheModel;
+
+            // Rotate the model to face forward (positive Z direction)
+            porscheModel.rotation.y = Math.PI / 2; // 90 degrees counter-clockwise (facing forward)
+
+            // Scale the model to appropriate size
+            const scale = 2.5;
+            porscheModel.scale.set(scale, scale, scale);
+
+            // Adjust the Y position so the car sits on the road
+            porscheModel.position.y = -0.5;
+
+            // Enhance materials for better lighting
+            porscheModel.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.material) {
+                        // Make materials more reflective and shiny
+                        child.material.metalness = 0.8;
+                        child.material.roughness = 0.2;
+                        child.material.envMapIntensity = 1.0;
+
+                        // Ensure materials respond to lighting
+                        if (!child.material.emissive) {
+                            child.material.emissive = new THREE.Color(0x000000);
+                        }
+                        child.material.emissiveIntensity = 0.1;
+                    }
+                }
+            });
+
+            car.add(porscheModel);
+
+            // Add headlight beams
+            const headlightPositions = [
+                { x: -0.6, z: 2.5 },
+                { x: 0.6, z: 2.5 }
+            ];
+
+            headlightPositions.forEach(pos => {
+                const light = new THREE.SpotLight(0xffffee, 2, 100, Math.PI / 6, 0.5);
+                light.position.set(pos.x, 0.5, pos.z);
+                light.target.position.set(pos.x, 0, 50);
+                car.add(light);
+                car.add(light.target);
+            });
+
+            console.log('Porsche 911 model loaded successfully');
+        },
+        function (xhr) {
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function (error) {
+            console.error('Error loading Porsche model:', error);
+            // Fallback to a simple box if loading fails
+            const boxGeometry = new THREE.BoxGeometry(2, 0.8, 4.5);
+            const boxMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff0000,
+                metalness: 0.8,
+                roughness: 0.2
+            });
+            carBody = new THREE.Mesh(boxGeometry, boxMaterial);
+            carBody.position.y = 0.5;
+            car.add(carBody);
+
+            // Add headlights to fallback car
+            [-0.6, 0.6].forEach(x => {
+                const light = new THREE.SpotLight(0xffffee, 2, 100, Math.PI / 6, 0.5);
+                light.position.set(x, 0.5, 2.3);
+                light.target.position.set(x, 0, 50);
+                car.add(light);
+                car.add(light.target);
+            });
+        }
+    );
+
     car.position.copy(carState.position);
     car.rotation.y = carState.rotation;
     scene.add(car);
