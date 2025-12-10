@@ -378,6 +378,7 @@
         <div><span>C</span> Change Camera</div>
         <div><span>N</span> Toggle Night</div>
         <div><span>M</span> Toggle Music</div>
+        <div><span>V</span> Debug View</div>
         <div><span>R</span> Restart Race</div>
     </div>
 
@@ -733,6 +734,9 @@ function init() {
     // Create city with real GPS-positioned buildings (includes Navy Pier Ferris Wheel)
     createCity();
 
+    // Add debug visualization for road alignment (press V to toggle)
+    createDebugVisualization();
+
     console.log('=== Scene has', scene.children.length, 'objects ===');
     
     // Events
@@ -746,6 +750,7 @@ function init() {
         if (e.code === 'KeyC') cameraMode = (cameraMode + 1) % cameraModes.length;
         if (e.code === 'KeyN') toggleNight();
         if (e.code === 'KeyM') toggleMusic();
+        if (e.code === 'KeyV') toggleDebugVisualization();
         if (e.code === 'KeyR' && (raceState.finished || raceState.started)) resetRace();
     });
     
@@ -2654,6 +2659,58 @@ function resetRace() {
     
     // Start new countdown
     startCountdown();
+}
+
+// Debug visualization for road alignment
+let debugGroup = null;
+
+function createDebugVisualization() {
+    debugGroup = new THREE.Group();
+    debugGroup.visible = false; // Hidden by default, press V to toggle
+
+    // Draw the road centerline path
+    const centerlinePoints = LSD_CENTERLINE.map(p => new THREE.Vector3(p.x, 0.2, -p.y));
+    const centerlineGeometry = new THREE.BufferGeometry().setFromPoints(centerlinePoints);
+    const centerlineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+    const centerlineLine = new THREE.Line(centerlineGeometry, centerlineMaterial);
+    debugGroup.add(centerlineLine);
+
+    // Add coordinate grid markers every 1000 units
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    for (let i = 0; i < LSD_CENTERLINE.length; i += 50) {
+        const p = LSD_CENTERLINE[i];
+        const marker = new THREE.Mesh(
+            new THREE.SphereGeometry(5, 8, 8),
+            markerMaterial
+        );
+        marker.position.set(p.x, 1, -p.y);
+        debugGroup.add(marker);
+    }
+
+    // Add west/east markers to show which side is which
+    const westMarkerGeometry = new THREE.BoxGeometry(50, 10, 50);
+    const westMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.5 });
+    const westMarker = new THREE.Mesh(westMarkerGeometry, westMarkerMaterial);
+    westMarker.position.set(getRoadXAtZ(0) - 300, 20, 0); // 300 units west
+    debugGroup.add(westMarker);
+
+    const eastMarkerGeometry = new THREE.BoxGeometry(50, 10, 50);
+    const eastMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.5 });
+    const eastMarker = new THREE.Mesh(eastMarkerGeometry, eastMarkerMaterial);
+    eastMarker.position.set(getRoadXAtZ(0) + 300, 20, 0); // 300 units east
+    debugGroup.add(eastMarker);
+
+    scene.add(debugGroup);
+    console.log('Debug visualization created. Press V to toggle visibility.');
+}
+
+function toggleDebugVisualization() {
+    if (debugGroup) {
+        debugGroup.visible = !debugGroup.visible;
+        console.log('Debug visualization:', debugGroup.visible ? 'ON' : 'OFF');
+        console.log('Red line = Road centerline, Green spheres = Every 50th centerline point');
+        console.log('Magenta box = WEST (city side), Cyan box = EAST (lake side)');
+    }
 }
 
 function animate() {
