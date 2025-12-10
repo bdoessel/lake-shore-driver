@@ -1911,8 +1911,10 @@ function createNavyPierFerrisWheel(data) {
         group.add(led);
     }
 
-    // Position using GPS coordinates from data
-    group.position.set(data.x, 0, data.z);
+    // Position using offset from road centerline
+    const roadX = getRoadXAtZ(data.z);
+    const actualX = roadX + data.offset;
+    group.position.set(actualX, 0, data.z);
     scene.add(group);
 
     // Store for animation
