@@ -1021,13 +1021,16 @@ function createGround() {
     // Create a large map-like textured ground plane
     const groundSize = 40000; // Large enough to cover entire map area
 
-    // Google Maps Static API - Satellite imagery
-    // Center: Lake Shore Drive, Chicago (41.865°N, 87.615°W)
-    // Zoom: 12 (shows full LSD from Hollywood Beach to Soldier Field)
-    // Size: 640x640 (max for free tier)
-    const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=12&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+    // Satellite imagery options:
 
-    // To disable satellite imagery and use procedural texture instead, set to null:
+    // Option 1: Google Maps Static API (requires Static Maps API enabled on your key)
+    // const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=12&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // Option 2: ESRI World Imagery (free, no API key, good quality satellite imagery)
+    // Tile coordinates for Chicago Lake Shore Drive area at zoom 11
+    const SATELLITE_IMAGE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/11/761/535';
+
+    // To disable satellite imagery and use procedural texture:
     // const SATELLITE_IMAGE_URL = null;
 
     if (SATELLITE_IMAGE_URL) {
