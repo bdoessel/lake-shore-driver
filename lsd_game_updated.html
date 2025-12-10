@@ -649,7 +649,10 @@ function init() {
     const moon = new THREE.DirectionalLight(0x8888ff, 0.2);
     moon.position.set(-100, 200, 100);
     scene.add(moon);
-    
+
+    // Create ground plane
+    createGround();
+
     // Create road
     createRoad();
     
@@ -924,6 +927,78 @@ function updateEngineSound() {
         const squealFreq = 2500 + speed * 5 + Math.sin(Date.now() * 0.008) * 300;
         engineSound.squealFilter.frequency.setTargetAtTime(squealFreq, audioContext.currentTime, 0.05);
     }
+}
+
+function createGround() {
+    // Create a large textured ground plane
+    const groundSize = 40000; // Large enough to cover the entire map area
+
+    // Create a canvas for the ground texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048;
+    canvas.height = 2048;
+    const ctx = canvas.getContext('2d');
+
+    // Base ground color - dark urban/water mix
+    ctx.fillStyle = '#0a0a15';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add subtle grid pattern to represent city blocks/water
+    ctx.strokeStyle = 'rgba(30, 40, 60, 0.3)';
+    ctx.lineWidth = 1;
+
+    // Vertical lines
+    for (let x = 0; x < canvas.width; x += 50) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+
+    // Horizontal lines
+    for (let y = 0; y < canvas.height; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+
+    // Add some variation for water/land
+    for (let i = 0; i < 100; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const size = Math.random() * 100 + 50;
+
+        // Darker spots for water
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, 'rgba(10, 20, 40, 0.3)');
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x - size, y - size, size * 2, size * 2);
+    }
+
+    // Create texture from canvas
+    const groundTexture = new THREE.CanvasTexture(canvas);
+    groundTexture.wrapS = THREE.RepeatWrapping;
+    groundTexture.wrapT = THREE.RepeatWrapping;
+    groundTexture.repeat.set(10, 10);
+
+    // Create ground plane geometry
+    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+    const groundMaterial = new THREE.MeshStandardMaterial({
+        map: groundTexture,
+        roughness: 0.9,
+        metalness: 0.1,
+        color: 0x1a1a2a
+    });
+
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+    ground.position.y = -0.1; // Slightly below road level
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    console.log('Ground plane created');
 }
 
 function createRoad() {
