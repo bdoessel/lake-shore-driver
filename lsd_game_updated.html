@@ -671,6 +671,9 @@ let driftTrail = null;
 const maxTrailPoints = 100;
 let trailPositions = [];
 
+// Debug visualization
+let debugGroup = null;
+
 // Audio engine
 let audioContext = null;
 let engineSound = null;
@@ -2662,8 +2665,6 @@ function resetRace() {
 }
 
 // Debug visualization for road alignment
-let debugGroup = null;
-
 function createDebugVisualization() {
     debugGroup = new THREE.Group();
     debugGroup.visible = false; // Hidden by default, press V to toggle
