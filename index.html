@@ -3,293 +3,724 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lake Shore Driver - Simple Working Version</title>
-    
+    <title>Lake Shore Driver</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
         
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            overflow: hidden; 
-            background: #000;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            color: white;
+        body { overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+        
+        #game-container { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+        
+        #vignette {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 15;
+            box-shadow: inset 0 0 150px 60px rgba(0, 0, 10, 0.7);
         }
-
-        #game-container { 
-            width: 100vw; 
-            height: 100vh; 
-            position: fixed;
-            top: 0; left: 0;
-            z-index: 1;
+        
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #ccc; text-align: center; font-family: 'Courier New', monospace;
         }
-
+        #start-screen.hidden { display: none; }
+        
+        .ascii-title {
+            font-family: 'Courier New', monospace; white-space: pre; text-align: center;
+            color: #ccc; font-size: 10px; line-height: 11px; margin-bottom: 50px; font-weight: bold;
+        }
+        @media (min-width: 1100px) { .ascii-title { font-size: 14px; line-height: 15px; } }
+        
+        .btn-retro {
+            background: #000; border: 2px solid #ccc; color: #ccc;
+            padding: 15px 40px; font-size: 1.5rem;
+            font-family: 'Courier New', monospace; font-weight: bold;
+            cursor: pointer; margin-top: 20px; text-transform: uppercase;
+        }
+        .btn-retro:hover { background: #ccc; color: #000; }
+        
+        .controls-hint { margin-top: 3rem; display: flex; justify-content: center; gap: 30px; }
+        .key-group { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .key-row { display: flex; gap: 3px; }
+        .key {
+            width: 36px; height: 36px; border: 2px solid #5b5e65;
+            display: flex; align-items: center; justify-content: center;
+            color: #5b5e65; font-family: 'Courier New', monospace; font-size: 16px;
+        }
+        .key-wide { width: 80px; }
+        .key-label { color: #5b5e65; font-size: 10px; margin-top: 5px; }
+        
         #hud {
-            position: fixed;
-            bottom: 30px; left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: none; gap: 30px; z-index: 100;
         }
-        
         .hud-item {
-            background: rgba(0,0,0,0.8);
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 10px;
-            padding: 15px 30px;
-            text-align: center;
+            background: rgba(0,0,0,0.7); border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px; padding: 15px 25px; text-align: center;
+        }
+        .hud-label { color: rgba(255,255,255,0.6); font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
+        .hud-value { color: #fff; font-size: 36px; font-weight: bold; }
+        #speed-value { color: #00ff88; }
+        #boost-bar { width: 150px; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; margin-top: 8px; }
+        #boost-fill { height: 100%; background: linear-gradient(90deg, #ff6600, #ffaa00); border-radius: 4px; }
+        
+        #timer-display { position: fixed; top: 20px; left: 20px; z-index: 100; display: none; }
+        #timer-value { font-size: 56px; color: rgba(255,255,255,0.6); text-shadow: 2px 2px 0px #000; font-family: 'VT323', monospace; }
+        
+        #minimap {
+            position: fixed; top: 100px; right: 30px; width: 180px; height: 180px;
+            background: rgba(0,20,40,0.8); border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 10px; z-index: 100; display: none;
         }
         
-        .hud-value {
-            color: #00ff88; font-size: 42px; font-weight: bold; 
-            font-family: 'Orbitron', sans-serif;
+        #controls {
+            position: fixed; bottom: 30px; right: 30px; background: rgba(0,0,0,0.7);
+            border-radius: 10px; padding: 15px; color: rgba(255,255,255,0.6);
+            font-size: 12px; z-index: 100; display: none;
         }
-        .hud-label {
-            color: #888; font-size: 12px; letter-spacing: 2px; margin-top: 5px;
-        }
-
+        #controls div { margin: 5px 0; }
+        #controls span { color: #ffaa00; }
+        
         #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10000; font-family: 'Courier New', monospace;
+        }
+        #loading-screen.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+        #loading-text { color: #ccc; font-size: 16px; margin-bottom: 30px; letter-spacing: 3px; }
+        #loading-progress { width: 400px; height: 4px; background: #333; border-radius: 2px; }
+        #loading-bar { height: 100%; background: #00ff88; width: 0%; transition: width 0.3s; }
+        #loading-status { color: #666; font-size: 12px; margin-top: 15px; }
+        
+        #countdown-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #050510; z-index: 9999;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            font-family: 'Courier New', monospace;
+            display: none; justify-content: center; align-items: center;
+            z-index: 999; pointer-events: none;
+        }
+        #countdown-text { font-family: 'VT323', monospace; font-size: 120px; color: rgba(255,255,255,0.8); text-shadow: 0 0 30px rgba(0,255,136,0.5); }
+        
+        #tile-status {
+            position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.7);
+            padding: 10px 15px; border-radius: 5px; color: #00ff88;
+            font-family: monospace; font-size: 12px; z-index: 100; display: none;
         }
         
-        .loader {
-            border: 4px solid #333; border-top: 4px solid #00ff88;
-            border-radius: 50%; width: 50px; height: 50px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        #controls-hint {
-            position: fixed; top: 20px; right: 20px;
-            color: rgba(255,255,255,0.6);
-            font-size: 14px; text-align: right;
+        #gps-display {
+            position: fixed; top: 60px; left: 20px; background: rgba(0,0,0,0.7);
+            padding: 8px 12px; border-radius: 5px; color: #00aaff;
+            font-family: monospace; font-size: 11px; z-index: 100; display: none;
         }
     </style>
-
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-            }
-        }
-    </script>
 </head>
 <body>
-
-    <div id="game-container"></div>
-    
-    <div id="loading-screen">
-        <div class="loader"></div>
-        <div id="loading-text">LOADING CHICAGO...</div>
-    </div>
-    
-    <div id="controls-hint">
-        WASD or Arrow Keys to Drive<br>
-        SPACE to Brake
-    </div>
-
-    <div id="hud">
-        <div class="hud-item">
-            <div class="hud-value" id="speed-value">0</div>
-            <div class="hud-label">MPH</div>
+    <div id="start-screen">
+        <pre class="ascii-title">
+██╗      █████╗ ██╗  ██╗███████╗    ███████╗██╗  ██╗ ██████╗ ██████╗ ███████╗
+██║     ██╔══██╗██║ ██╔╝██╔════╝    ██╔════╝██║  ██║██╔═══██╗██╔══██╗██╔════╝
+██║     ███████║█████╔╝ █████╗      ███████╗███████║██║   ██║██████╔╝█████╗  
+███████╗██║  ██║██║  ██╗███████╗    ███████║██║  ██║╚██████╔╝██║  ██║███████╗
+╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝    ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
+                        ██████╗ ██████╗ ██╗██╗   ██╗███████╗██████╗ 
+                        ██╔══██╗██╔══██╗██║██║   ██║██╔════╝██╔══██╗
+                        ██║  ██║██████╔╝██║██║   ██║█████╗  ██████╔╝
+                        ██████╔╝██║  ██║██║ ╚████╔╝ ███████╗██║  ██║
+                        ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝</pre>
+        <button id="start-btn" class="btn-retro">START ENGINE</button>
+        <div class="controls-hint">
+            <div class="key-group">
+                <div class="key">W</div>
+                <div class="key-row"><div class="key">A</div><div class="key">S</div><div class="key">D</div></div>
+                <div class="key-label">DRIVE</div>
+            </div>
+            <div class="key-group"><div class="key key-wide">SHIFT</div><div class="key-label">DRIFT</div></div>
+            <div class="key-group"><div class="key">E</div><div class="key-label">BOOST</div></div>
         </div>
     </div>
+    
+    <div id="game-container"></div>
+    <div id="vignette"></div>
+    
+    <div id="loading-screen">
+        <div id="loading-text">:: LOADING CHICAGO ::</div>
+        <div id="loading-progress"><div id="loading-bar"></div></div>
+        <div id="loading-status">Initializing...</div>
+    </div>
+    
+    <div id="countdown-overlay"><div id="countdown-text">3</div></div>
+    <div id="timer-display"><div id="timer-value">0:00.00</div></div>
+    <div id="gps-display">GPS: --</div>
+    
+    <div id="hud">
+        <div class="hud-item">
+            <div class="hud-label">MPH</div>
+            <div class="hud-value" id="speed-value">0</div>
+        </div>
+        <div class="hud-item">
+            <div class="hud-label">Boost</div>
+            <div id="boost-bar"><div id="boost-fill" style="width: 100%"></div></div>
+        </div>
+    </div>
+    
+    <div id="minimap"><canvas id="minimap-canvas" width="180" height="180"></canvas></div>
+    
+    <div id="controls">
+        <div><span>WASD</span> Drive</div>
+        <div><span>SHIFT</span> Drift</div>
+        <div><span>E</span> Boost</div>
+        <div><span>SPACE</span> Brake</div>
+        <div><span>C</span> Camera</div>
+        <div><span>R</span> Restart</div>
+    </div>
+    
+    <div id="tile-status">Tiles: <span id="tiles-loaded">0</span></div>
 
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
     <script type="module">
-        import * as THREE from 'three';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OGC3DTile } from 'https://cdn.jsdelivr.net/npm/@jdultra/threedtiles@10.0.0/dist/threedtiles.mjs';
 
-        // --- CONFIG ---
-        const START_LAT = 41.9840;
-        const START_LON = -87.6530;
+console.log('Modules loaded');
 
-        let scene, camera, renderer, car;
-        let lastTime = performance.now();
+// ============================================
+// CONFIG
+// ============================================
+const GOOGLE_API_KEY = "AIzaSyBw-8RJiszHoHiJEfpUipnLitUzi3Pn88g";
+
+// GPS Configuration - Lake Shore Drive Chicago
+const GPS_ORIGIN = { lat: 41.9028, lon: -87.6200 }; // Near Navy Pier
+const METERS_PER_DEG_LAT = 111132;
+const METERS_PER_DEG_LON = 82955;
+
+// Lake Shore Drive waypoints (game coordinates)
+const LSD_WAYPOINTS = [
+    {x: 0, z: 0},
+    {x: 20, z: -200},
+    {x: 50, z: -500},
+    {x: 80, z: -900},
+    {x: 100, z: -1400},
+    {x: 80, z: -2000},
+    {x: 40, z: -2600},
+    {x: 0, z: -3200},
+    {x: -30, z: -3800},
+    {x: 0, z: -4400},
+    {x: 50, z: -5000}
+];
+
+// ============================================
+// GLOBALS
+// ============================================
+let scene, camera, renderer;
+let car, carBody;
+let ogc3DTile;
+let roadCurve;
+let lastTime = performance.now();
+let tilesLoaded = 0;
+
+const carState = {
+    position: new THREE.Vector3(0, 10, 0),
+    rotation: 0,
+    speed: 0,
+    boost: 100,
+    isBoosting: false,
+    isDrifting: false,
+    visualDriftAngle: 0
+};
+
+const raceState = {
+    started: false,
+    finished: false,
+    frozen: true,
+    startTime: 0,
+    currentTime: 0
+};
+
+const keys = {};
+let cameraMode = 0;
+
+// ============================================
+// COORDINATE CONVERSION
+// ============================================
+function gameToGPS(x, z) {
+    return {
+        lat: GPS_ORIGIN.lat - (z / METERS_PER_DEG_LAT),
+        lon: GPS_ORIGIN.lon + (x / METERS_PER_DEG_LON)
+    };
+}
+
+function gpsToECEF(lat, lon, alt = 0) {
+    const latRad = lat * Math.PI / 180;
+    const lonRad = lon * Math.PI / 180;
+    
+    const a = 6378137.0; // WGS84 semi-major axis
+    const f = 1 / 298.257223563;
+    const e2 = 2 * f - f * f;
+    
+    const sinLat = Math.sin(latRad);
+    const cosLat = Math.cos(latRad);
+    const N = a / Math.sqrt(1 - e2 * sinLat * sinLat);
+    
+    return {
+        x: (N + alt) * cosLat * Math.cos(lonRad),
+        y: (N + alt) * cosLat * Math.sin(lonRad),
+        z: (N * (1 - e2) + alt) * sinLat
+    };
+}
+
+// ============================================
+// INIT
+// ============================================
+function init() {
+    console.log('Initializing scene...');
+    
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a1a);
+    
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 500000);
+    camera.position.set(0, 50, 100);
+    
+    renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.8;
+    document.getElementById('game-container').appendChild(renderer.domElement);
+    
+    // Lighting - pre-dawn
+    const ambient = new THREE.AmbientLight(0x303050, 0.4);
+    scene.add(ambient);
+    
+    const sun = new THREE.DirectionalLight(0xff6633, 0.8);
+    sun.position.set(5000, 1000, 2000);
+    scene.add(sun);
+    
+    const hemi = new THREE.HemisphereLight(0x404080, 0x101020, 0.3);
+    scene.add(hemi);
+    
+    // Car
+    createCar();
+    
+    // Road markers
+    createRoadMarkers();
+    
+    // Input
+    window.addEventListener('keydown', e => { 
+        keys[e.code] = true; 
+        if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', e => { 
+        keys[e.code] = false;
+        if (e.code === 'KeyC') cameraMode = (cameraMode + 1) % 3;
+        if (e.code === 'KeyR') resetRace();
+    });
+    window.addEventListener('resize', onResize);
+    
+    window.minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
+    
+    console.log('Scene initialized');
+}
+
+function createCar() {
+    car = new THREE.Group();
+    
+    const body = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 1, 4.5),
+        new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.9, roughness: 0.2 })
+    );
+    body.position.y = 0.5;
+    carBody = body;
+    car.add(body);
+    
+    const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(1.8, 0.6, 2),
+        new THREE.MeshStandardMaterial({ color: 0xcc2222, metalness: 0.9, roughness: 0.2 })
+    );
+    roof.position.set(0, 1.1, -0.3);
+    car.add(roof);
+    
+    // Headlights
+    const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+    [-0.7, 0.7].forEach(x => {
+        const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.1), hlMat);
+        hl.position.set(x, 0.5, 2.25);
+        car.add(hl);
+    });
+    
+    // Spotlights
+    [-0.6, 0.6].forEach(x => {
+        const spot = new THREE.SpotLight(0xffffee, 3, 300, Math.PI/5, 0.3);
+        spot.position.set(x, 0.5, 2.5);
+        spot.target.position.set(x, -2, 100);
+        car.add(spot);
+        car.add(spot.target);
+    });
+    
+    car.position.copy(carState.position);
+    scene.add(car);
+}
+
+function createRoadMarkers() {
+    const points = LSD_WAYPOINTS.map(p => new THREE.Vector3(p.x, 0, p.z));
+    roadCurve = new THREE.CatmullRomCurve3(points);
+    
+    // Create glowing edge lines
+    const leftPts = [], rightPts = [];
+    for (let i = 0; i <= 200; i++) {
+        const t = i / 200;
+        const pt = roadCurve.getPointAt(t);
+        const tan = roadCurve.getTangentAt(t);
+        const norm = new THREE.Vector3(-tan.z, 0, tan.x).normalize();
+        leftPts.push(pt.clone().add(norm.clone().multiplyScalar(12)));
+        rightPts.push(pt.clone().add(norm.clone().multiplyScalar(-12)));
+    }
+    
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7 });
+    
+    const leftLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(leftPts), lineMat);
+    leftLine.position.y = 2;
+    scene.add(leftLine);
+    
+    const rightLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(rightPts), lineMat);
+    rightLine.position.y = 2;
+    scene.add(rightLine);
+    
+    // Center line dashes
+    const centerMat = new THREE.LineBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5 });
+    for (let i = 0; i < 100; i += 2) {
+        const t1 = i / 100;
+        const t2 = (i + 1) / 100;
+        const p1 = roadCurve.getPointAt(t1);
+        const p2 = roadCurve.getPointAt(t2);
+        const dash = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([p1, p2]),
+            centerMat
+        );
+        dash.position.y = 2;
+        scene.add(dash);
+    }
+}
+
+// ============================================
+// GOOGLE 3D TILES
+// ============================================
+async function loadGoogleTiles() {
+    console.log('Loading Google 3D Tiles...');
+    document.getElementById('loading-status').textContent = 'Loading Chicago 3D map...';
+    
+    try {
+        // Create the tileset
+        ogc3DTile = new OGC3DTile({
+            url: "https://tile.googleapis.com/v1/3dtiles/root.json",
+            queryParams: { key: GOOGLE_API_KEY },
+            renderer: renderer,
+            yUp: false,
+            loadOutsideView: true,
+            geometricErrorMultiplier: 0.5,
+            maximumScreenSpaceError: 48,
+            onLoadCallback: (tile) => {
+                tilesLoaded++;
+                document.getElementById('tiles-loaded').textContent = tilesLoaded;
+            }
+        });
         
-        const carState = {
-            speed: 0,
-            maxSpeed: 300,
-            rotation: Math.PI
-        };
+        // Transform tileset to local coordinates
+        // Google tiles are in ECEF, we need to position them so our GPS origin is at game origin
+        const originECEF = gpsToECEF(GPS_ORIGIN.lat, GPS_ORIGIN.lon, 180);
+        
+        // Create transform matrix
+        const latRad = GPS_ORIGIN.lat * Math.PI / 180;
+        const lonRad = GPS_ORIGIN.lon * Math.PI / 180;
+        
+        const sinLat = Math.sin(latRad);
+        const cosLat = Math.cos(latRad);
+        const sinLon = Math.sin(lonRad);
+        const cosLon = Math.cos(lonRad);
+        
+        // ENU rotation matrix (East-North-Up to ECEF, inverted for our use)
+        // This rotates from ECEF to local ENU coordinates
+        const rotMatrix = new THREE.Matrix4().set(
+            -sinLon,        cosLon,         0,          0,
+            -sinLat*cosLon, -sinLat*sinLon, cosLat,     0,
+            cosLat*cosLon,  cosLat*sinLon,  sinLat,     0,
+            0,              0,              0,          1
+        );
+        
+        // Translation to origin
+        const transMatrix = new THREE.Matrix4().makeTranslation(
+            -originECEF.x, -originECEF.y, -originECEF.z
+        );
+        
+        // Combined transform: first translate ECEF to origin, then rotate to ENU
+        const transform = new THREE.Matrix4();
+        transform.multiplyMatrices(rotMatrix, transMatrix);
+        
+        ogc3DTile.matrixAutoUpdate = false;
+        ogc3DTile.matrix.copy(transform);
+        ogc3DTile.updateMatrixWorld(true);
+        
+        scene.add(ogc3DTile);
+        
+        console.log('Google 3D Tiles initialized');
+        console.log('Origin ECEF:', originECEF);
+        
+        document.getElementById('tile-status').style.display = 'block';
+        
+        return true;
+    } catch (err) {
+        console.error('Failed to load tiles:', err);
+        document.getElementById('loading-status').textContent = 'Tiles failed - continuing without 3D map';
+        return false;
+    }
+}
 
-        const keys = { forward: false, backward: false, left: false, right: false, brake: false };
+// ============================================
+// PHYSICS
+// ============================================
+function updatePhysics(dt) {
+    if (raceState.frozen) return;
+    
+    const maxSpeed = 89;
+    const accel = 28;
+    const friction = 8;
+    const turnSpeed = 2.2;
+    const boostAccel = 45;
+    const boostMax = 134;
+    
+    const fwd = keys['KeyW'] || keys['ArrowUp'];
+    const back = keys['KeyS'] || keys['ArrowDown'];
+    const left = keys['KeyA'] || keys['ArrowLeft'];
+    const right = keys['KeyD'] || keys['ArrowRight'];
+    const braking = keys['Space'];
+    const drift = keys['ShiftLeft'] || keys['ShiftRight'];
+    const boost = keys['KeyE'];
+    
+    // Boost
+    if (boost && carState.boost > 0 && carState.speed > 10) {
+        carState.isBoosting = true;
+        carState.boost = Math.max(0, carState.boost - dt * 25);
+    } else {
+        carState.isBoosting = false;
+        if (!boost) carState.boost = Math.min(100, carState.boost + dt * 8);
+    }
+    
+    const maxSpd = carState.isBoosting ? boostMax : maxSpeed;
+    
+    if (fwd) {
+        carState.speed = Math.min(carState.speed + (carState.isBoosting ? boostAccel : accel) * dt, maxSpd);
+    } else if (back) {
+        carState.speed = Math.max(carState.speed - accel * dt, -maxSpeed * 0.3);
+    }
+    
+    if (braking) carState.speed *= 0.95;
+    if (!fwd && !back && !braking) carState.speed *= (1 - friction * dt / maxSpeed);
+    
+    // Steering
+    carState.isDrifting = drift && Math.abs(carState.speed) > 20;
+    const turnMult = carState.isDrifting ? 1.8 : 1;
+    const speedFactor = Math.min(1, Math.abs(carState.speed) / 30);
+    
+    if (left) carState.rotation += turnSpeed * turnMult * speedFactor * dt * Math.sign(carState.speed || 1);
+    if (right) carState.rotation -= turnSpeed * turnMult * speedFactor * dt * Math.sign(carState.speed || 1);
+    
+    // Drift visual
+    if (carState.isDrifting) {
+        const target = (left ? 0.4 : 0) + (right ? -0.4 : 0);
+        carState.visualDriftAngle += (target - carState.visualDriftAngle) * 5 * dt;
+    } else {
+        carState.visualDriftAngle *= 0.9;
+    }
+    
+    // Move
+    carState.position.x += Math.sin(carState.rotation) * carState.speed * dt;
+    carState.position.z += Math.cos(carState.rotation) * carState.speed * dt;
+    
+    // Ground follow (simple for now)
+    carState.position.y = 10;
+    
+    // Update car
+    car.position.copy(carState.position);
+    car.rotation.y = carState.rotation;
+    if (carBody) carBody.rotation.y = carState.visualDriftAngle;
+}
 
-        // GPS to Local helper
-        function gpsToLocal(lat, lon) {
-            const z = (START_LAT - lat) * 111132;
-            const x = (lon - START_LON) * 82955;
-            return new THREE.Vector3(x, 0, z);
+function updateCamera() {
+    const p = carState.position;
+    const r = carState.rotation;
+    
+    if (cameraMode === 0) { // Chase
+        camera.position.set(p.x - Math.sin(r) * 20, p.y + 8, p.z - Math.cos(r) * 20);
+        camera.lookAt(p.x, p.y + 2, p.z);
+    } else if (cameraMode === 1) { // Hood
+        camera.position.set(p.x + Math.sin(r) * 2, p.y + 2, p.z + Math.cos(r) * 2);
+        camera.lookAt(p.x + Math.sin(r) * 100, p.y, p.z + Math.cos(r) * 100);
+    } else { // Cinematic
+        camera.position.set(p.x - Math.sin(r) * 30, p.y + 15, p.z - Math.cos(r) * 35);
+        camera.lookAt(p.x, p.y, p.z);
+    }
+}
+
+// ============================================
+// HUD
+// ============================================
+function updateHUD() {
+    document.getElementById('speed-value').textContent = Math.round(Math.abs(carState.speed) * 2.237);
+    document.getElementById('boost-fill').style.width = carState.boost + '%';
+    
+    // GPS display
+    const gps = gameToGPS(carState.position.x, carState.position.z);
+    document.getElementById('gps-display').textContent = 
+        `GPS: ${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}`;
+    
+    if (raceState.started && !raceState.finished) {
+        raceState.currentTime = (performance.now() - raceState.startTime) / 1000;
+        const m = Math.floor(raceState.currentTime / 60);
+        const s = (raceState.currentTime % 60).toFixed(2);
+        document.getElementById('timer-value').textContent = `${m}:${s.padStart(5, '0')}`;
+    }
+    
+    // Minimap
+    const ctx = window.minimapCtx;
+    if (ctx) {
+        ctx.fillStyle = 'rgba(0,20,40,0.9)';
+        ctx.fillRect(0, 0, 180, 180);
+        
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const scale = 0.03;
+        LSD_WAYPOINTS.forEach((p, i) => {
+            const x = 90 + (p.x - carState.position.x) * scale;
+            const y = 90 + (p.z - carState.position.z) * scale;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        
+        ctx.fillStyle = '#ff4444';
+        ctx.beginPath();
+        ctx.arc(90, 90, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(90, 90);
+        ctx.lineTo(90 + Math.sin(carState.rotation) * 15, 90 - Math.cos(carState.rotation) * 15);
+        ctx.stroke();
+    }
+}
+
+// ============================================
+// GAME FLOW
+// ============================================
+function showHUD() {
+    document.getElementById('hud').style.display = 'flex';
+    document.getElementById('timer-display').style.display = 'block';
+    document.getElementById('minimap').style.display = 'block';
+    document.getElementById('controls').style.display = 'block';
+    document.getElementById('gps-display').style.display = 'block';
+}
+
+function startCountdown() {
+    const overlay = document.getElementById('countdown-overlay');
+    const text = document.getElementById('countdown-text');
+    overlay.style.display = 'flex';
+    
+    let count = 3;
+    text.textContent = count;
+    text.style.color = 'rgba(255,255,255,0.8)';
+    
+    const interval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            text.textContent = count;
+        } else if (count === 0) {
+            text.textContent = 'GO!';
+            text.style.color = '#00ff88';
+        } else {
+            clearInterval(interval);
+            overlay.style.display = 'none';
+            raceState.frozen = false;
+            raceState.started = true;
+            raceState.startTime = performance.now();
         }
+    }, 1000);
+}
 
-        function init() {
-            // Scene
-            const container = document.getElementById('game-container');
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050510);
-            scene.fog = new THREE.FogExp2(0x050510, 0.002);
+function resetRace() {
+    carState.position.set(0, 10, 0);
+    carState.rotation = 0;
+    carState.speed = 0;
+    carState.boost = 100;
+    raceState.started = false;
+    raceState.finished = false;
+    raceState.frozen = true;
+    document.getElementById('timer-value').textContent = '0:00.00';
+    startCountdown();
+}
 
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 30000);
-            
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            container.appendChild(renderer.domElement);
+function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
-            // Lights
-            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-            scene.add(ambient);
-            const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-            sun.position.set(100, 1000, 500);
-            scene.add(sun);
+// ============================================
+// MAIN
+// ============================================
+async function startGame() {
+    console.log('Starting game...');
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('loading-screen').style.display = 'flex';
+    
+    document.getElementById('loading-bar').style.width = '10%';
+    init();
+    
+    document.getElementById('loading-bar').style.width = '30%';
+    await loadGoogleTiles();
+    
+    document.getElementById('loading-bar').style.width = '90%';
+    document.getElementById('loading-status').textContent = 'Ready!';
+    
+    await new Promise(r => setTimeout(r, 500));
+    
+    document.getElementById('loading-bar').style.width = '100%';
+    document.getElementById('loading-screen').classList.add('hidden');
+    showHUD();
+    startCountdown();
+    animate();
+}
 
-            // Simple ground plane (no 3D tiles)
-            const groundGeo = new THREE.PlaneGeometry(50000, 50000);
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
-            const ground = new THREE.Mesh(groundGeo, groundMat);
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.y = -0.5;
-            scene.add(ground);
+function animate() {
+    requestAnimationFrame(animate);
+    
+    const now = performance.now();
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    
+    updatePhysics(dt);
+    updateCamera();
+    updateHUD();
+    
+    // Update tiles
+    if (ogc3DTile) {
+        ogc3DTile.update(camera);
+    }
+    
+    renderer.render(scene, camera);
+}
 
-            // Grid for reference
-            const gridHelper = new THREE.GridHelper(50000, 500, 0x00ff88, 0x444444);
-            scene.add(gridHelper);
-
-            createCar();
-            createTrack();
-            setupControls();
-
-            window.addEventListener('resize', onResize);
-            
-            // Hide loading
-            setTimeout(() => {
-                document.getElementById('loading-screen').style.opacity = 0;
-                setTimeout(() => document.getElementById('loading-screen').remove(), 1000);
-            }, 500);
-
-            animate();
-        }
-
-        function setupControls() {
-            window.addEventListener('keydown', (e) => {
-                if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = true;
-                if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = true;
-                if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = true;
-                if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = true;
-                if(e.code === 'Space') { keys.brake = true; e.preventDefault(); }
-            });
-            window.addEventListener('keyup', (e) => {
-                if(e.code === 'KeyW' || e.code === 'ArrowUp') keys.forward = false;
-                if(e.code === 'KeyS' || e.code === 'ArrowDown') keys.backward = false;
-                if(e.code === 'KeyA' || e.code === 'ArrowLeft') keys.left = false;
-                if(e.code === 'KeyD' || e.code === 'ArrowRight') keys.right = false;
-                if(e.code === 'Space') keys.brake = false;
-            });
-        }
-
-        function createCar() {
-            car = new THREE.Group();
-            
-            // Simple red box car
-            const bodyGeo = new THREE.BoxGeometry(2, 0.5, 4.5);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.2 });
-            const mesh = new THREE.Mesh(bodyGeo, bodyMat);
-            mesh.position.y = 0.5;
-            car.add(mesh);
-            
-            // Headlights
-            const lightL = new THREE.SpotLight(0xffffee, 50, 400, 0.6, 0.5);
-            lightL.position.set(-0.8, 1.0, -1.0);
-            lightL.target.position.set(-0.8, 0, -50);
-            car.add(lightL);
-            car.add(lightL.target);
-
-            const lightR = new THREE.SpotLight(0xffffee, 50, 400, 0.6, 0.5);
-            lightR.position.set(0.8, 1.0, -1.0);
-            lightR.target.position.set(0.8, 0, -50);
-            car.add(lightR);
-            car.add(lightR.target);
-
-            scene.add(car);
-            car.position.set(0, 1, 0);
-        }
-
-        function createTrack() {
-            // Ramps
-            const rampLocations = [
-                { lat: 41.9840, lon: -87.6530, color: 0xff6600 },
-                { lat: 41.9050, lon: -87.6250, color: 0xff0000 }
-            ];
-
-            rampLocations.forEach(data => {
-                const pos = gpsToLocal(data.lat, data.lon);
-                const geo = new THREE.BoxGeometry(25, 4, 30);
-                const mat = new THREE.MeshStandardMaterial({ color: data.color });
-                const mesh = new THREE.Mesh(geo, mat);
-                mesh.position.set(pos.x, 2, pos.z);
-                mesh.rotation.x = -0.2;
-                scene.add(mesh);
-            });
-        }
-
-        function updatePhysics(dt) {
-            if (!car) return;
-
-            const speedInc = 80 * dt;
-            const turnSpeed = 2.0 * dt;
-            const drag = 0.98;
-            
-            if (keys.forward) carState.speed += speedInc;
-            if (keys.backward) carState.speed -= speedInc;
-            if (keys.brake) carState.speed *= 0.92;
-            carState.speed *= drag;
-
-            if (Math.abs(carState.speed) > 1) {
-                if (keys.left) carState.rotation += turnSpeed;
-                if (keys.right) carState.rotation -= turnSpeed;
-            }
-
-            car.position.x += Math.sin(carState.rotation) * carState.speed * dt;
-            car.position.z += Math.cos(carState.rotation) * carState.speed * dt;
-            car.rotation.y = carState.rotation;
-
-            // Keep on ground
-            car.position.y = 1;
-
-            document.getElementById('speed-value').innerText = Math.abs(Math.round(carState.speed));
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            const now = performance.now();
-            const dt = Math.min((now - lastTime) / 1000, 0.1);
-            lastTime = now;
-
-            updatePhysics(dt);
-
-            if (car) {
-                const offset = new THREE.Vector3(
-                    Math.sin(carState.rotation) * -15,
-                    5,
-                    Math.cos(carState.rotation) * -15
-                );
-                camera.position.lerp(car.position.clone().add(offset), 0.1);
-                camera.lookAt(car.position);
-            }
-            
-            renderer.render(scene, camera);
-        }
-
-        function onResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        init();
+// Start
+document.getElementById('start-btn').addEventListener('click', startGame);
+console.log('Ready - click START ENGINE');
     </script>
 </body>
 </html>
