@@ -353,6 +353,9 @@
             <div class="hud-label">Boost</div>
             <div id="boost-bar"><div id="boost-fill" style="width: 100%"></div></div>
         </div>
+        <div class="hud-item" id="hyperdrive-indicator" style="display: none; border-color: #ff00ff; color: #ff00ff;">
+            <div class="hud-label">⚡ HYPERDRIVE ⚡</div>
+        </div>
     </div>
     
     <div id="landmark"></div>
@@ -370,6 +373,7 @@
         <div><span>WASD/Arrows</span> Drive</div>
         <div><span>SHIFT</span> Drift</div>
         <div><span>E</span> Boost</div>
+        <div><span>H</span> ⚡ HYPERDRIVE (10x Speed!)</div>
         <div><span>SPACE</span> Handbrake</div>
         <div><span>C</span> Change Camera</div>
         <div><span>N</span> Toggle Night</div>
@@ -642,11 +646,18 @@ function init() {
     renderer.toneMappingExposure = 1.26;
     document.getElementById('game-container').appendChild(renderer.domElement);
     
-    // Lights
-    const ambient = new THREE.AmbientLight(0x404060, 0.3);
+    // Lights - Increased ambient for better visibility
+    const ambient = new THREE.AmbientLight(0x606080, 0.8);
     scene.add(ambient);
-    
-    const moon = new THREE.DirectionalLight(0x8888ff, 0.2);
+
+    // Eastern sunrise - warm sunlight rising from the east (positive X)
+    const sunrise = new THREE.DirectionalLight(0xffddaa, 1.5);
+    sunrise.position.set(1000, 300, 0); // East = positive X
+    sunrise.castShadow = true;
+    scene.add(sunrise);
+
+    // Secondary moon light for depth
+    const moon = new THREE.DirectionalLight(0x8888ff, 0.3);
     moon.position.set(-100, 200, 100);
     scene.add(moon);
 
@@ -1441,20 +1452,52 @@ function createCar() {
             // Adjust the Y position so the car sits on the road
             porscheModel.position.y = -0.5;
 
-            // Enhance materials for better lighting
+            // Create environment map for reflections
+            const envMapSize = 256;
+            const envMapCanvas = document.createElement('canvas');
+            envMapCanvas.width = envMapSize;
+            envMapCanvas.height = envMapSize;
+            const ctx = envMapCanvas.getContext('2d');
+
+            // Sunrise gradient - warm eastern light
+            const gradient = ctx.createLinearGradient(0, envMapSize, 0, 0);
+            gradient.addColorStop(0, '#1a1a2a'); // Dark ground
+            gradient.addColorStop(0.3, '#3a3a5a'); // Horizon
+            gradient.addColorStop(0.5, '#ffaa66'); // Sunrise orange
+            gradient.addColorStop(0.7, '#ffddaa'); // Bright sunrise
+            gradient.addColorStop(1, '#aaccff');   // Sky blue
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, envMapSize, envMapSize);
+
+            const envTexture = new THREE.CanvasTexture(envMapCanvas);
+            envTexture.mapping = THREE.EquirectangularReflectionMapping;
+
+            // Enhance materials for better lighting and reflections
             porscheModel.traverse((child) => {
                 if (child.isMesh) {
                     if (child.material) {
-                        // Make materials more reflective and shiny
-                        child.material.metalness = 0.8;
-                        child.material.roughness = 0.2;
-                        child.material.envMapIntensity = 1.0;
-
-                        // Ensure materials respond to lighting
-                        if (!child.material.emissive) {
-                            child.material.emissive = new THREE.Color(0x000000);
+                        // Lighten the color - multiply by 2.5x
+                        if (child.material.color) {
+                            const color = child.material.color;
+                            color.r = Math.min(1, color.r * 2.5);
+                            color.g = Math.min(1, color.g * 2.5);
+                            color.b = Math.min(1, color.b * 2.5);
                         }
-                        child.material.emissiveIntensity = 0.1;
+
+                        // Make materials highly reflective with environment map
+                        child.material.metalness = 0.9;
+                        child.material.roughness = 0.15;
+                        child.material.envMap = envTexture;
+                        child.material.envMapIntensity = 2.0;
+
+                        // Add subtle emissive glow
+                        if (!child.material.emissive) {
+                            child.material.emissive = new THREE.Color(0x222222);
+                        }
+                        child.material.emissiveIntensity = 0.2;
+
+                        // Ensure materials update
+                        child.material.needsUpdate = true;
                     }
                 }
             });
@@ -1988,7 +2031,11 @@ function updatePhysics(dt) {
     if (keys['KeyD'] || keys['ArrowRight']) steering = -1;
     if (keys['Space']) handbrake = true;
     if (keys['ShiftLeft'] || keys['ShiftRight']) drifting = true;
-    
+
+    // HYPERDRIVE MODE - Press H for ultra-fast building viewing
+    const hyperdrive = keys['KeyH'];
+    const hyperMultiplier = hyperdrive ? 10.0 : 1.0;
+
     // Boost (now on E key) - DRAMATIC
     const boosting = keys['KeyE'];
     if (boosting && carState.boost > 0 && throttle > 0) {
@@ -1999,13 +2046,16 @@ function updatePhysics(dt) {
         carState.isBoosting = false;
         carState.boost = Math.min(100, carState.boost + dt * 12);
     }
-    
+
+    // Apply hyperdrive multiplier to throttle
+    throttle *= hyperMultiplier;
+
     // Physics constants - ARCADE INSANE
-    const maxSpeed = 306; // m/s (~680 mph) - 2x previous
-    const acceleration = 204; // 2x previous
+    const maxSpeed = 306 * hyperMultiplier; // m/s (~680 mph) - 2x previous, 10x in hyperdrive
+    const acceleration = 204 * hyperMultiplier; // 2x previous, 10x in hyperdrive
     const braking = 170;
     const turnSpeed = 1.05;
-    const drag = 0.988;
+    const drag = hyperdrive ? 0.999 : 0.988; // Less drag in hyperdrive
     
     // Drift mechanics - Shift triggers drift without losing speed
     const normalGrip = 0.92;
@@ -2184,42 +2234,42 @@ function updatePhysics(dt) {
         carState.position.y = 0.5;
     }
     
-    // Wall collision detection
-    if (window.wallSegments && window.wallSegments.length > 0) {
-        // Find nearest wall segment
-        let nearestDist = Infinity;
-        let nearestSegment = null;
-        
-        for (const seg of window.wallSegments) {
-            const dist = carState.position.distanceTo(seg.center);
-            if (dist < nearestDist) {
-                nearestDist = dist;
-                nearestSegment = seg;
-            }
-        }
-        
-        if (nearestSegment) {
-            // Calculate distance from road center along the normal
-            const tocar = carState.position.clone().sub(nearestSegment.center);
-            const lateralDist = tocar.dot(nearestSegment.normal);
-            const halfRoad = nearestSegment.roadWidth / 2 - 1; // Keep car 1m from actual wall
-            
-            // If outside road bounds, slide along wall
-            if (Math.abs(lateralDist) > halfRoad) {
-                // Push car back to road edge
-                const wallSide = Math.sign(lateralDist);
-                const correction = nearestSegment.normal.clone().multiplyScalar(wallSide * halfRoad - lateralDist);
-                carState.position.add(correction);
-                
-                // Remove only the velocity component going into the wall
-                const normalVel = carState.velocity.dot(nearestSegment.normal);
-                if ((wallSide > 0 && normalVel > 0) || (wallSide < 0 && normalVel < 0)) {
-                    // Just zero out the into-wall velocity, keep the along-wall velocity
-                    carState.velocity.sub(nearestSegment.normal.clone().multiplyScalar(normalVel));
-                }
-            }
-        }
-    }
+    // Wall collision detection - DISABLED FOR FREE WORLD MODE
+    // if (window.wallSegments && window.wallSegments.length > 0) {
+    //     // Find nearest wall segment
+    //     let nearestDist = Infinity;
+    //     let nearestSegment = null;
+    //
+    //     for (const seg of window.wallSegments) {
+    //         const dist = carState.position.distanceTo(seg.center);
+    //         if (dist < nearestDist) {
+    //             nearestDist = dist;
+    //             nearestSegment = seg;
+    //         }
+    //     }
+    //
+    //     if (nearestSegment) {
+    //         // Calculate distance from road center along the normal
+    //         const tocar = carState.position.clone().sub(nearestSegment.center);
+    //         const lateralDist = tocar.dot(nearestSegment.normal);
+    //         const halfRoad = nearestSegment.roadWidth / 2 - 1; // Keep car 1m from actual wall
+    //
+    //         // If outside road bounds, slide along wall
+    //         if (Math.abs(lateralDist) > halfRoad) {
+    //             // Push car back to road edge
+    //             const wallSide = Math.sign(lateralDist);
+    //             const correction = nearestSegment.normal.clone().multiplyScalar(wallSide * halfRoad - lateralDist);
+    //             carState.position.add(correction);
+    //
+    //             // Remove only the velocity component going into the wall
+    //             const normalVel = carState.velocity.dot(nearestSegment.normal);
+    //             if ((wallSide > 0 && normalVel > 0) || (wallSide < 0 && normalVel < 0)) {
+    //                 // Just zero out the into-wall velocity, keep the along-wall velocity
+    //                 carState.velocity.sub(nearestSegment.normal.clone().multiplyScalar(normalVel));
+    //             }
+    //         }
+    //     }
+    // }
     
     // Update car mesh - use VISUAL drift angle for dramatic rotation
     car.position.copy(carState.position);
@@ -2306,11 +2356,19 @@ function updateHUD() {
     const mph = Math.abs(carState.speed * 0.79).toFixed(0); // Scaled to max ~125 mph
     document.getElementById('speed-value').textContent = mph;
     document.getElementById('boost-fill').style.width = carState.boost + '%';
-    
+
+    // Hyperdrive indicator
+    const hyperdriveEl = document.getElementById('hyperdrive-indicator');
+    if (keys['KeyH']) {
+        hyperdriveEl.style.display = 'block';
+    } else {
+        hyperdriveEl.style.display = 'none';
+    }
+
     // Progress
     const progress = (carState.position.z + 8000) / 16000 * 100;
     document.getElementById('progress-fill').style.width = Math.max(0, Math.min(100, progress)) + '%';
-    
+
     // Landmark detection
     const currentY = -carState.position.z;
     for (const lm of LANDMARKS) {
