@@ -1018,6 +1018,54 @@ function createGround() {
     // Create a large map-like textured ground plane
     const groundSize = 40000; // Large enough to cover entire map area
 
+    // Option to use satellite imagery
+    // To use real satellite imagery:
+    // 1. Get a satellite image of Lake Shore Drive (lat: 41.77-41.96, lon: -87.62 to -87.61)
+    // 2. Save it as 'satellite_lsd.jpg' in the same folder as this HTML file
+    // 3. Set SATELLITE_IMAGE_URL = 'satellite_lsd.jpg' below
+    //
+    // Free satellite image sources:
+    // - Google Earth (screenshot and save)
+    // - https://zoom.earth (screenshot)
+    // - Mapbox Static API: https://docs.mapbox.com/api/maps/static-images/
+    //   Example: const SATELLITE_IMAGE_URL = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/-87.615,41.865,11,0/1200x1200?access_token=YOUR_TOKEN'
+    //
+    const SATELLITE_IMAGE_URL = null; // Set to image URL or filename to use satellite imagery
+
+    if (SATELLITE_IMAGE_URL) {
+        const loader = new THREE.TextureLoader();
+        loader.load(
+            SATELLITE_IMAGE_URL,
+            function(texture) {
+                console.log('Loaded satellite imagery for ground');
+                texture.wrapS = THREE.ClampToEdgeWrapping;
+                texture.wrapT = THREE.ClampToEdgeWrapping;
+
+                const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+                const groundMaterial = new THREE.MeshStandardMaterial({
+                    map: texture,
+                    roughness: 0.95,
+                    metalness: 0.05
+                });
+
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.position.y = -0.1;
+                scene.add(ground);
+            },
+            undefined,
+            function(error) {
+                console.log('Failed to load satellite imagery, using procedural texture');
+                createProceduralGround(groundSize);
+            }
+        );
+        return;
+    }
+
+    createProceduralGround(groundSize);
+}
+
+function createProceduralGround(groundSize) {
     // Create canvas for map texture
     const canvas = document.createElement('canvas');
     canvas.width = 2048;
