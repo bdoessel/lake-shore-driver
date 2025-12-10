@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lake Shore Drive - Building Preview Map</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a1a;
+            color: #ccc;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #ffaa00;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        #map-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #1a1a2a;
+            border: 2px solid #333;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        #legend {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 15px;
+            background: #1a1a2a;
+            border: 2px solid #333;
+        }
+        .legend-item {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 10px;
+        }
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            vertical-align: middle;
+            border: 1px solid #666;
+        }
+        #building-list {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 15px;
+            background: #1a1a2a;
+            border: 2px solid #333;
+        }
+        .building-entry {
+            padding: 8px;
+            margin: 5px 0;
+            background: #0a0a1a;
+            border-left: 3px solid #ffaa00;
+        }
+        .building-entry.landmark {
+            border-left-color: #ff3333;
+            font-weight: bold;
+        }
+        .building-entry.lakefront {
+            border-left-color: #3388ff;
+        }
+        .building-entry.skyline {
+            border-left-color: #ffaa00;
+        }
+        .stat {
+            color: #888;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🏙️ LAKE SHORE DRIVE - BUILDING PREVIEW MAP 🏙️</h1>
+
+    <div id="map-container">
+        <canvas id="map-canvas"></canvas>
+    </div>
+
+    <div id="legend">
+        <strong>Legend:</strong><br>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #ff3333;"></span>
+            <span>Landmarks (13)</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #3388ff;"></span>
+            <span>Lakefront Buildings (32)</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #ffaa00;"></span>
+            <span>Skyline Fill (3)</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-color" style="background: #666;"></span>
+            <span>Lake Shore Drive</span>
+        </div>
+    </div>
+
+    <div id="building-list">
+        <strong>Building List (48 total):</strong>
+        <div id="buildings"></div>
+    </div>
+
+    <script src="buildings_data.js"></script>
+    <script>
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size
+        canvas.width = 1200;
+        canvas.height = 1600;
+
+        // Find bounds
+        let minX = Infinity, maxX = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
+        BUILDINGS.forEach(b => {
+            minX = Math.min(minX, b.x);
+            maxX = Math.max(maxX, b.x);
+            minZ = Math.min(minZ, b.z);
+            maxZ = Math.max(maxZ, b.z);
+        });
+
+        // Add padding
+        const padding = 200;
+        minX -= padding;
+        maxX += padding;
+        minZ -= padding;
+        maxZ += padding;
+
+        // Scale to fit canvas
+        const scaleX = canvas.width / (maxX - minX);
+        const scaleZ = canvas.height / (maxZ - minZ);
+        const scale = Math.min(scaleX, scaleZ) * 0.9;
+
+        function toCanvasX(x) {
+            return (x - minX) * scale;
+        }
+
+        function toCanvasY(z) {
+            return (z - minZ) * scale;
+        }
+
+        // Draw background
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw grid
+        ctx.strokeStyle = '#1a1a2a';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 20; i++) {
+            const x = (canvas.width / 20) * i;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+
+            const y = (canvas.height / 20) * i;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+
+        // Draw Lake Michigan (east side)
+        ctx.fillStyle = 'rgba(0, 50, 100, 0.3)';
+        ctx.fillRect(toCanvasX(4500), 0, canvas.width, canvas.height);
+
+        // Draw approximate LSD path
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 5]);
+        ctx.beginPath();
+        ctx.moveTo(toCanvasX(1500), toCanvasY(8000));
+        ctx.lineTo(toCanvasX(2500), toCanvasY(14000));
+        ctx.lineTo(toCanvasX(3800), toCanvasY(17000));
+        ctx.lineTo(toCanvasX(4200), toCanvasY(20000));
+        ctx.lineTo(toCanvasX(4500), toCanvasY(21500));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw buildings
+        const buildingsByType = { landmark: [], lakefront: [], skyline: [] };
+
+        BUILDINGS.forEach((building, index) => {
+            const x = toCanvasX(building.x);
+            const y = toCanvasY(building.z);
+
+            // Color by type
+            let color;
+            if (building.type === 'landmark') {
+                color = '#ff3333';
+                buildingsByType.landmark.push(building);
+            } else if (building.type === 'lakefront') {
+                color = '#3388ff';
+                buildingsByType.lakefront.push(building);
+            } else {
+                color = '#ffaa00';
+                buildingsByType.skyline.push(building);
+            }
+
+            // Draw building as circle (size based on height)
+            const radius = Math.max(3, Math.min(15, building.height / 30));
+
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw border
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Label landmarks
+            if (building.type === 'landmark') {
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px Courier New';
+                ctx.fillText(building.name, x + radius + 5, y + 3);
+            }
+        });
+
+        // Add labels
+        ctx.fillStyle = '#888';
+        ctx.font = 'bold 14px Courier New';
+        ctx.fillText('NORTH (Hollywood Beach)', 20, 30);
+        ctx.fillText('SOUTH (Soldier Field)', 20, canvas.height - 20);
+        ctx.fillText('← LAKE MICHIGAN', canvas.width - 180, canvas.height / 2);
+
+        // Populate building list
+        const listContainer = document.getElementById('buildings');
+
+        function addBuildingSection(title, buildings) {
+            if (buildings.length === 0) return;
+
+            const section = document.createElement('div');
+            section.style.marginTop = '15px';
+            section.innerHTML = `<strong>${title}:</strong>`;
+            listContainer.appendChild(section);
+
+            buildings.forEach(b => {
+                const entry = document.createElement('div');
+                entry.className = `building-entry ${b.type}`;
+                entry.innerHTML = `
+                    <strong>${b.name}</strong><br>
+                    <span class="stat">Height: ${b.height}m | GPS: ${b.lat.toFixed(4)}, ${b.lon.toFixed(4)} | Coords: (${b.x}, ${b.z})</span>
+                    ${b.special ? `<br><span class="stat">Special: ${b.special}</span>` : ''}
+                `;
+                listContainer.appendChild(entry);
+            });
+        }
+
+        addBuildingSection('MAJOR LANDMARKS', buildingsByType.landmark);
+        addBuildingSection('LAKEFRONT BUILDINGS', buildingsByType.lakefront);
+        addBuildingSection('SKYLINE FILL', buildingsByType.skyline);
+
+        console.log('Map rendered successfully!');
+        console.log(`Total buildings: ${BUILDINGS.length}`);
+        console.log(`- Landmarks: ${buildingsByType.landmark.length}`);
+        console.log(`- Lakefront: ${buildingsByType.lakefront.length}`);
+        console.log(`- Skyline: ${buildingsByType.skyline.length}`);
+    </script>
+</body>
+</html>
