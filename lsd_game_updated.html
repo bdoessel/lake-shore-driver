@@ -1049,6 +1049,21 @@ function createGround() {
             function(texture) {
                 console.log('✅ Successfully loaded satellite imagery for ground');
                 console.log('Texture size:', texture.image.width, 'x', texture.image.height);
+                console.log('Image src:', texture.image.src);
+
+                // DEBUG: Add the loaded image to the page so you can see what actually loaded
+                const debugImg = document.createElement('img');
+                debugImg.src = texture.image.src;
+                debugImg.style.position = 'fixed';
+                debugImg.style.top = '10px';
+                debugImg.style.right = '10px';
+                debugImg.style.width = '300px';
+                debugImg.style.border = '3px solid red';
+                debugImg.style.zIndex = '10000';
+                debugImg.title = 'Loaded satellite texture (DEBUG)';
+                document.body.appendChild(debugImg);
+                console.log('🖼️ Debug image added to top-right corner of screen');
+
                 texture.wrapS = THREE.ClampToEdgeWrapping;
                 texture.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -1064,6 +1079,7 @@ function createGround() {
                 ground.position.y = -0.1;
                 scene.add(ground);
                 console.log('Satellite ground plane added to scene');
+                console.log('Ground material:', groundMaterial);
             },
             function(progress) {
                 if (progress.lengthComputable) {
