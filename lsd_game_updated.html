@@ -645,9 +645,13 @@ const raceState = {
 
 // Car physics
 const carState = {
-    position: new THREE.Vector3(LSD_CENTERLINE[0].x, 0.5, -LSD_CENTERLINE[0].y),
+    position: new THREE.Vector3(
+        LSD_CENTERLINE[LSD_CENTERLINE.length - 1].x,
+        0.5,
+        -LSD_CENTERLINE[LSD_CENTERLINE.length - 1].y
+    ),
     velocity: new THREE.Vector3(),
-    rotation: Math.PI,
+    rotation: Math.PI, // Facing south
     angularVelocity: 0,
     speed: 0,
     boost: 100,
@@ -715,7 +719,8 @@ function init() {
     scene.add(moon);
 
     console.log('=== INITIALIZATION START ===');
-    console.log('Car starting position:', LSD_CENTERLINE[0].x, 0.5, -LSD_CENTERLINE[0].y);
+    const startPoint = LSD_CENTERLINE[LSD_CENTERLINE.length - 1];
+    console.log('Car starting position (Bryn Mawr, north end):', startPoint.x, 0.5, -startPoint.y);
 
     // Create ground plane
     createGround();
@@ -1443,8 +1448,8 @@ function createStartFinishLines(roadWidth) {
     const blackMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
     const checkerGeo = new THREE.PlaneGeometry(checkerSize, checkerSize);
     
-    // Start line position (t = 0.02, just after start)
-    const startT = 0.02;
+    // Start line position (t = 0.98, near north end - Bryn Mawr/Hollywood Beach)
+    const startT = 0.98;
     const startPoint = roadCurve.getPointAt(startT);
     const startTangent = roadCurve.getTangentAt(startT);
     const startNormal = new THREE.Vector3(-startTangent.z, 0, startTangent.x).normalize();
@@ -1486,8 +1491,8 @@ function createStartFinishLines(roadWidth) {
     startBanner.rotation.y = startAngle;
     scene.add(startBanner);
     
-    // Finish line position (t = 0.98, near end)
-    const finishT = 0.98;
+    // Finish line position (t = 0.02, near south end - Soldier Field)
+    const finishT = 0.02;
     const finishPoint = roadCurve.getPointAt(finishT);
     const finishTangent = roadCurve.getTangentAt(finishT);
     const finishNormal = new THREE.Vector3(-finishTangent.z, 0, finishTangent.x).normalize();
@@ -2491,8 +2496,10 @@ function updateHUD() {
         hyperdriveEl.style.display = 'none';
     }
 
-    // Progress
-    const progress = (carState.position.z + 8000) / 16000 * 100;
+    // Progress (Bryn Mawr Z≈-7800 to Soldier Field Z≈7900)
+    const startZ = -LSD_CENTERLINE[LSD_CENTERLINE.length - 1].y; // North end
+    const endZ = -LSD_CENTERLINE[0].y; // South end
+    const progress = (carState.position.z - startZ) / (endZ - startZ) * 100;
     document.getElementById('progress-fill').style.width = Math.max(0, Math.min(100, progress)) + '%';
 
     // Landmark detection
@@ -2649,10 +2656,11 @@ function updateRaceTimer() {
 }
 
 function resetRace() {
-    // Reset car position to start
-    carState.position.set(LSD_CENTERLINE[0].x, 0.5, -LSD_CENTERLINE[0].y);
+    // Reset car position to start (Bryn Mawr, north end)
+    const startPoint = LSD_CENTERLINE[LSD_CENTERLINE.length - 1];
+    carState.position.set(startPoint.x, 0.5, -startPoint.y);
     carState.velocity.set(0, 0, 0);
-    carState.rotation = Math.PI;
+    carState.rotation = Math.PI; // Facing south
     carState.speed = 0;
     carState.boost = 100;
     
