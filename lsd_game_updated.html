@@ -1884,6 +1884,13 @@ function addWindowLights(building, width, height, depth) {
 
 function createNavyPierFerrisWheel(data) {
     // Navy Pier Ferris Wheel with real GPS position
+
+    // Safety check - ensure data has required fields
+    if (!data || typeof data.z === 'undefined' || typeof data.offset === 'undefined') {
+        console.error('createNavyPierFerrisWheel: Invalid data', data);
+        return;
+    }
+
     const group = new THREE.Group();
 
     // Main wheel structure
@@ -1941,13 +1948,20 @@ function createNavyPierFerrisWheel(data) {
     // Position using offset from road centerline
     const roadX = getRoadXAtZ(data.z);
     const actualX = roadX + data.offset;
+
+    // Additional safety check
+    if (typeof actualX === 'undefined' || typeof data.z === 'undefined') {
+        console.error('createNavyPierFerrisWheel: Position calculation failed', { roadX, actualX, z: data.z });
+        return;
+    }
+
     group.position.set(actualX, 0, data.z);
     scene.add(group);
 
     // Store for animation
     group.userData.wheel = wheel;
     group.userData.time = 0;
-    group.userData.buildingName = data.name;
+    group.userData.buildingName = data.name || "Navy Pier Ferris Wheel";
     window.ferrisWheel = group;
 
     console.log(`Created ${data.name} at (${actualX.toFixed(0)}, ${data.z.toFixed(0)})`);
