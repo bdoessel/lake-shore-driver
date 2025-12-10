@@ -662,6 +662,8 @@ const cameraModes = ['chase', 'hood', 'cinematic'];
 
 // Timing
 let lastTime = performance.now();
+let frameCount = 0;
+let lastDebugTime = 0;
 
 // Drift trail
 let driftTrail = null;
@@ -2653,9 +2655,6 @@ function resetRace() {
     // Start new countdown
     startCountdown();
 }
-
-let frameCount = 0;
-let lastDebugTime = 0;
 
 function animate() {
     requestAnimationFrame(animate);
