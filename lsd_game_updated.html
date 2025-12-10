@@ -385,6 +385,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <script>
+// Google Maps API Key for satellite imagery
+const GOOGLE_MAPS_API_KEY = "AIzaSyBw-8RJiszHoHiJEfpUipnLitUzi3Pn88g";
+
 // LAKE SHORE DRIVE - Real Building Data (RELATIVE TO ROAD)
 // Buildings positioned relative to road centerline:
 // - Negative offset = west/city side
@@ -1018,19 +1021,14 @@ function createGround() {
     // Create a large map-like textured ground plane
     const groundSize = 40000; // Large enough to cover entire map area
 
-    // Option to use satellite imagery
-    // To use real satellite imagery:
-    // 1. Get a satellite image of Lake Shore Drive (lat: 41.77-41.96, lon: -87.62 to -87.61)
-    // 2. Save it as 'satellite_lsd.jpg' in the same folder as this HTML file
-    // 3. Set SATELLITE_IMAGE_URL = 'satellite_lsd.jpg' below
-    //
-    // Free satellite image sources:
-    // - Google Earth (screenshot and save)
-    // - https://zoom.earth (screenshot)
-    // - Mapbox Static API: https://docs.mapbox.com/api/maps/static-images/
-    //   Example: const SATELLITE_IMAGE_URL = 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/-87.615,41.865,11,0/1200x1200?access_token=YOUR_TOKEN'
-    //
-    const SATELLITE_IMAGE_URL = null; // Set to image URL or filename to use satellite imagery
+    // Google Maps Static API - Satellite imagery
+    // Center: Lake Shore Drive, Chicago (41.865°N, 87.615°W)
+    // Zoom: 12 (shows full LSD from Hollywood Beach to Soldier Field)
+    // Size: 640x640 (max for free tier)
+    const SATELLITE_IMAGE_URL = `https://maps.googleapis.com/maps/api/staticmap?center=41.865,-87.615&zoom=12&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`;
+
+    // To disable satellite imagery and use procedural texture instead, set to null:
+    // const SATELLITE_IMAGE_URL = null;
 
     if (SATELLITE_IMAGE_URL) {
         const loader = new THREE.TextureLoader();
