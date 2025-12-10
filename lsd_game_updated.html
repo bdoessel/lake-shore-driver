@@ -1500,13 +1500,36 @@ function createStartFinishLines(roadWidth) {
 function createCar() {
     car = new THREE.Group();
 
-    // Load the Porsche 911 GLB model
+    // Create fallback box car FIRST (will be replaced if model loads)
+    const boxGeometry = new THREE.BoxGeometry(2, 0.8, 4.5);
+    const boxMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    carBody = new THREE.Mesh(boxGeometry, boxMaterial);
+    carBody.position.y = 0.5;
+    car.add(carBody);
+
+    // Add headlights
+    [-0.6, 0.6].forEach(x => {
+        const light = new THREE.SpotLight(0xffffee, 2, 100, Math.PI / 6, 0.5);
+        light.position.set(x, 0.5, 2.3);
+        light.target.position.set(x, 0, 50);
+        car.add(light);
+        car.add(light.target);
+    });
+
+    // Try to load the Porsche 911 GLB model
     const loader = new THREE.GLTFLoader();
 
     loader.load(
         'porsche_911_930_low_poly.glb',
         function (gltf) {
             const porscheModel = gltf.scene;
+
+            // Remove fallback box before adding model
+            car.remove(carBody);
 
             // Store reference to the model for body rotation
             carBody = porscheModel;
@@ -1593,26 +1616,8 @@ function createCar() {
             console.log((xhr.loaded / xhr.total * 100) + '% loaded');
         },
         function (error) {
-            console.error('Error loading Porsche model:', error);
-            // Fallback to a simple box if loading fails
-            const boxGeometry = new THREE.BoxGeometry(2, 0.8, 4.5);
-            const boxMaterial = new THREE.MeshStandardMaterial({
-                color: 0xff0000,
-                metalness: 0.8,
-                roughness: 0.2
-            });
-            carBody = new THREE.Mesh(boxGeometry, boxMaterial);
-            carBody.position.y = 0.5;
-            car.add(carBody);
-
-            // Add headlights to fallback car
-            [-0.6, 0.6].forEach(x => {
-                const light = new THREE.SpotLight(0xffffee, 2, 100, Math.PI / 6, 0.5);
-                light.position.set(x, 0.5, 2.3);
-                light.target.position.set(x, 0, 50);
-                car.add(light);
-                car.add(light.target);
-            });
+            console.log('Porsche model not available, using fallback box car');
+            // Fallback box already created, just keep using it
         }
     );
 
