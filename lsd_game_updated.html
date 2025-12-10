@@ -1031,11 +1031,13 @@ function createGround() {
     // const SATELLITE_IMAGE_URL = null;
 
     if (SATELLITE_IMAGE_URL) {
+        console.log('Attempting to load satellite imagery from:', SATELLITE_IMAGE_URL);
         const loader = new THREE.TextureLoader();
         loader.load(
             SATELLITE_IMAGE_URL,
             function(texture) {
-                console.log('Loaded satellite imagery for ground');
+                console.log('✅ Successfully loaded satellite imagery for ground');
+                console.log('Texture size:', texture.image.width, 'x', texture.image.height);
                 texture.wrapS = THREE.ClampToEdgeWrapping;
                 texture.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -1050,10 +1052,16 @@ function createGround() {
                 ground.rotation.x = -Math.PI / 2;
                 ground.position.y = -0.1;
                 scene.add(ground);
+                console.log('Satellite ground plane added to scene');
             },
-            undefined,
+            function(progress) {
+                if (progress.lengthComputable) {
+                    console.log('Loading satellite imagery:', (progress.loaded / progress.total * 100).toFixed(0) + '%');
+                }
+            },
             function(error) {
-                console.log('Failed to load satellite imagery, using procedural texture');
+                console.error('❌ Failed to load satellite imagery:', error);
+                console.log('Falling back to procedural texture');
                 createProceduralGround(groundSize);
             }
         );
