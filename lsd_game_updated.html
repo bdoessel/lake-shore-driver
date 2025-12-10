@@ -384,40 +384,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <script>
-// Helper function to get road X position at any Z coordinate
-function getRoadXAtZ(z) {
-    const y = -z; // Convert z to LSD_CENTERLINE y coordinate
-
-    // Find closest points in LSD_CENTERLINE
-    let closest1 = LSD_CENTERLINE[0];
-    let closest2 = LSD_CENTERLINE[1];
-    let minDist = Infinity;
-
-    for (let i = 0; i < LSD_CENTERLINE.length - 1; i++) {
-        const p1 = LSD_CENTERLINE[i];
-        const p2 = LSD_CENTERLINE[i + 1];
-
-        // Check if y is between p1.y and p2.y
-        if ((p1.y <= y && y <= p2.y) || (p2.y <= y && y <= p1.y)) {
-            closest1 = p1;
-            closest2 = p2;
-            break;
-        }
-
-        // Otherwise find closest point
-        const dist = Math.abs(p1.y - y);
-        if (dist < minDist) {
-            minDist = dist;
-            closest1 = p1;
-            closest2 = p2;
-        }
-    }
-
-    // Interpolate X position
-    const t = (y - closest1.y) / (closest2.y - closest1.y + 0.0001);
-    return closest1.x + t * (closest2.x - closest1.x);
-}
-
 // LAKE SHORE DRIVE - Real Building Data (RELATIVE TO ROAD)
 // Buildings positioned relative to road centerline:
 // - Negative offset = west/city side
@@ -595,6 +561,40 @@ const LSD_CENTERLINE = [
     {x:-2001.11,y:7752.59},{x:-2007.49,y:7760.9},{x:-2015.89,y:7769.16},{x:-2026.72,y:7777.98},{x:-2041.8,y:7787.12},
     {x:-2063.45,y:7792.14},{x:-2083.79,y:7795.8},{x:-2098.93,y:7796.22}
 ];
+
+// Helper function to get road X position at any Z coordinate
+function getRoadXAtZ(z) {
+    const y = -z; // Convert z to LSD_CENTERLINE y coordinate
+
+    // Find closest points in LSD_CENTERLINE
+    let closest1 = LSD_CENTERLINE[0];
+    let closest2 = LSD_CENTERLINE[1];
+    let minDist = Infinity;
+
+    for (let i = 0; i < LSD_CENTERLINE.length - 1; i++) {
+        const p1 = LSD_CENTERLINE[i];
+        const p2 = LSD_CENTERLINE[i + 1];
+
+        // Check if y is between p1.y and p2.y
+        if ((p1.y <= y && y <= p2.y) || (p2.y <= y && y <= p1.y)) {
+            closest1 = p1;
+            closest2 = p2;
+            break;
+        }
+
+        // Otherwise find closest point
+        const dist = Math.abs(p1.y - y);
+        if (dist < minDist) {
+            minDist = dist;
+            closest1 = p1;
+            closest2 = p2;
+        }
+    }
+
+    // Interpolate X position
+    const t = (y - closest1.y) / (closest2.y - closest1.y + 0.0001);
+    return closest1.x + t * (closest2.x - closest1.x);
+}
 
 // Landmarks along the route (approximate y positions)
 const LANDMARKS = [
